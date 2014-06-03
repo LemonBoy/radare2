@@ -1,0 +1,20 @@
+CORE_OBJ_FLAIR=core_flair.o
+
+#CORE_SHARED_FLAIR=../../shlr/flair/code.o
+#CORE_SHARED_FLAIR+=../../shlr/flair/class.o
+#CORE_SHARED_FLAIR+=../../shlr/flair/ops.o
+
+CORE_SHARED2_FLAIR=$(addprefix ../,${CORE_SHARED_FLAIR})
+CORE_OBJ_FLAIR+=${CORE_SHARED2_FLAIR}
+CORE_SHARED2_FLAIR=
+
+STATIC_OBJ+=${CORE_OBJ_FLAIR}
+#SHARED_OBJ+=${CORE_OBJ_FLAIR}
+CORE_TARGET_FLAIR=core_flair.${EXT_SO}
+
+ALL_TARGETS+=${CORE_TARGET_FLAIR}
+
+${CORE_TARGET_FLAIR}: ${CORE_OBJ_FLAIR}
+	${CC} $(call libname,core_flair) ${CFLAGS} \
+		-o core_flair.${EXT_SO} \
+		${CORE_OBJ_FLAIR} ${CORE_SHARED2_FLAIR}

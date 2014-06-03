@@ -106,6 +106,7 @@ install: install-doc install-man install-www
 	cp -f doc/hud ${DLIBDIR}/radare2/${VERSION}/hud/main
 	mkdir -p ${DESTDIR}/${PREFIX}/share/radare2/${VERSION}/
 	cp -fr shlr/yara/ ${DESTDIR}/${PREFIX}/share/radare2/${VERSION}/yara/
+	cp -fr shlr/flair/ ${DESTDIR}/${PREFIX}/share/radare2/${VERSION}/flair/
 	#cp ${PWD}/libr/lang/p/radare.lua ${DLIBDIR}/radare2/${VERSION}/radare.lua
 	sys/ldconfig.sh
 
@@ -143,6 +144,8 @@ symstall install-symlink: install-man-symlink install-doc-symlink install-pkgcon
 	mkdir -p ${DESTDIR}/${PREFIX}/share/radare2/${VERSION}/
 	rm -rf ${DESTDIR}/${PREFIX}/share/radare2/${VERSION}/yara
 	ln -fs ${PWD}/shlr/yara/ ${DESTDIR}/${PREFIX}/share/radare2/${VERSION}/yara
+	rm -rf ${DESTDIR}/${PREFIX}/share/radare2/${VERSION}/flair
+	ln -fs ${PWD}/shlr/flair/ ${DESTDIR}/${PREFIX}/share/radare2/${VERSION}/flair
 	sys/ldconfig.sh
 
 deinstall uninstall:
