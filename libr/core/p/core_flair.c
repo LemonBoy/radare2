@@ -10,12 +10,7 @@ mv core_test.so ~/.config/radare2/plugins
 #include <r_cmd.h>
 #include <r_core.h>
 #include <r_cons.h>
-#include <string.h>
-#include <r_anal.h>
 #include <zlib.h>
-
-#undef R_API
-#define R_API static
 
 typedef struct idasig_t {
 	char magic[6];
@@ -98,7 +93,6 @@ static ut32 r_sig_explode_mask (bb *b) {
 		return (r&0x3f) << 24 | read_byte(b) << 16 | read_short(b);
 
 	return read_word(b);
-	/*return read_short(b) << 16 | read_short(b);*/
 }
 
 #define R_SIG_NAME_MAX 1024 
@@ -158,12 +152,12 @@ unsigned short crc16(unsigned char *data_p, size_t length)
 	return (unsigned short)(crc);
 }
 
-static int r_sig_node_match (void *buf, unsigned long buf_size, RSigNode *node) {
+static int r_sig_node_match (const ut8 *buf, const ut64 buf_size, const RSigNode *node) {
 	int i;
 	if (node->length > buf_size)
 		return -1;
 	for (i = 0; i < node->length; i++) {
-		if ((node->match[i]&node->maskp[i]) != (((ut8*)buf)[i]&node->maskp[i]))
+		if ((node->match[i]&node->maskp[i]) != (buf[i]&node->maskp[i]))
 			return -1;
 	}
 
@@ -327,13 +321,15 @@ static void r_sig_parse_leaf (bb *b, RSigNode *node) {
 
 			if (flags&0x02) {
 				sub->flags |= 1;
-				sub->check_off = read_shift(b);
+				/*sub->check_off = read_shift(b);*/
+				sub->check_off = read_short(b);
 				sub->check_val = read_byte(b);
 			}
 
 			if (flags&0x04) {
 				sub->flags |= 2;
-				ut32 a = read_shift(b);
+				/*ut32 a = read_shift(b);*/
+				ut32 a = read_short(b);
 				ut32 p = read_byte(b);
 				if (!p)
 					p = read_shift(b);
@@ -527,7 +523,7 @@ static int r_sig_parse (const RCore *core, const char *filename) {
 	node->child_list = r_list_new();
 	bb *b = init_bb(buf, size);
 	r_sig_parse_tree(b, node);
-	r_sig_node_print(node, -1);
+	/*r_sig_node_print(node, -1);*/
 
 	const unsigned int buffer_size = r_io_size (core->io);
 	ut8 *buffer = malloc (buffer_size);
@@ -559,7 +555,7 @@ static int r_cmd_test_call(void *user, const char *input) {
 RCorePlugin r_core_plugin_flair = {
 	.name = "fl",
 	.desc = "FLAIR loader",
-	.license = "Apache",
+	.license = "MIT",
 	.call = r_cmd_test_call,
 };
 
