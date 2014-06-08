@@ -16,8 +16,6 @@ mv core_test.so ~/.config/radare2/plugins
 
 #undef R_API
 #define R_API static
-#undef R_IPI
-#define R_IPI static
 
 typedef struct idasig_t {
 	char magic[6];
@@ -33,6 +31,15 @@ typedef struct idasig_t {
 	ut8  name_len;
 	ut16 crc_;
 } __attribute__((packed)) idasig_t;
+
+typedef struct idasig_v6_t {
+	ut32 modules;
+} __attribute__((packed)) idasig_v6_t;
+
+typedef struct idasig_v8_t {
+	ut32 modules;
+	ut16 pattern_size;
+} __attribute__((packed)) idasig_v8_t;
 
 typedef struct bb {
 	ut8 *buf;
@@ -63,10 +70,10 @@ static ut16 read_short (bb *b) {
 
 static ut32 read_word (bb *b) {
 	ut32 r = 
-		b->buf[b->pos+3] << 24 | 
-		b->buf[b->pos+2] << 16 | 
-		b->buf[b->pos+1] << 8  | 
-		b->buf[b->pos+0];
+		b->buf[b->pos+0] << 24 | 
+		b->buf[b->pos+1] << 16 | 
+		b->buf[b->pos+2] << 8  | 
+		b->buf[b->pos+3];
 	b->pos += 4;
 	return r;
 }
@@ -90,20 +97,21 @@ static ut32 r_sig_explode_mask (bb *b) {
 	if ((r&0xe0) != 0xe0)
 		return (r&0x3f) << 24 | read_byte(b) << 16 | read_short(b);
 
-	return read_short(b) << 16 | read_short(b);
+	return read_word(b);
+	/*return read_short(b) << 16 | read_short(b);*/
 }
 
 #define R_SIG_NAME_MAX 1024 
 
 typedef struct RSigName {
-	ut32 offset;
 	char name[R_SIG_NAME_MAX];
+	ut32 offset;
 } RSigName;
 
 typedef struct RSigSubLeaf {
-	ut8  flags;
 	ut16 check_off;
 	ut8  check_val;
+	ut8  flags;
 	RList *names_list;
 } RSigSubLeaf;
 
@@ -118,7 +126,7 @@ typedef struct RSigNode {
 	RList *leaf_list;
 	ut32 length;
 	ut8 *match;
-	ut32 mask;
+	ut64 mask;
 	ut8 *maskp;
 } RSigNode;
 
@@ -163,8 +171,9 @@ static int r_sig_node_match (void *buf, unsigned long buf_size, RSigNode *node) 
 }
 
 static void r_sig_node_print_pattern (const RSigNode *node) {
-	ut32 cur; int i;
-	cur = 1 << (node->length - 1);
+	int i;
+	ut64 cur; 
+	cur = 1ULL << (node->length - 1);
 	for (i = 0; i < node->length; i++) {
 		if (node->mask&cur)
 			eprintf("..");
@@ -175,44 +184,37 @@ static void r_sig_node_print_pattern (const RSigNode *node) {
 	eprintf("\n");
 }
 
-static void r_sig_node_match_buf (unsigned long off, void *buf, unsigned long buf_size, RSigNode *node) {
-	unsigned long pos = off;
-	ut8 *p = (ut8 *)buf;
+static void r_sig_node_match_buf (const ut64 off, const ut8 *buf, unsigned long buf_size, RSigNode *node) {
+	RListIter *it1, *it2, *it3, *it4;
+	RSigNode *c;
+	RSigLeaf *l;
+	RSigSubLeaf *s;
+	RSigName *n;
+	ut64 pos = off;
 
 	for (pos = 0; pos < buf_size; ) {
 		if (r_print_is_interrupted ())
 			break;
 
-		if (!r_sig_node_match(p + pos, buf_size - pos, node)) {
+		if (!r_sig_node_match(buf + pos, buf_size - pos, node)) {
 			pos += node->length;
-			RListIter *it;
-			RSigNode *c;
 
-			r_list_foreach(node->child_list, it, c) {
-				r_sig_node_match_buf(pos, p, buf_size, c);
-			}
+			r_list_foreach(node->child_list, it1, c)
+				r_sig_node_match_buf(pos, buf, buf_size, c);
+
 			if (node->leaf_list) { 
-				RSigLeaf *l;
-				r_list_foreach(node->leaf_list, it, l) {
-					/*eprintf("@%x %x\n", pos, buf_size); */
-					/*r_sig_node_print_pattern(node);*/
-
+				r_list_foreach(node->leaf_list, it2, l) {
 					if (l->crc_len) {
-						const ut16 crc = crc16(p + pos, l->crc_len);
+						const ut16 crc = crc16(buf + pos, l->crc_len);
 						eprintf("CRC : %04X CALC : %04X\n", l->crc_val, crc);
 						if (crc != l->crc_val)
 							continue;
 					}
 
-					RListIter *it;
-					RSigSubLeaf *s;
-					r_list_foreach(l->sub_list, it, s) {
-						/*eprintf("flags : %x\n", s->flags);*/
-						if (s->flags&1 && p[pos + s->check_off] != s->check_val)
+					r_list_foreach(l->sub_list, it3, s) {
+						if (s->flags&1 && buf[pos + s->check_off] != s->check_val)
 							continue;
-						RListIter *it;
-						RSigName *n;
-						r_list_foreach(s->names_list, it, n) {
+						r_list_foreach(s->names_list, it4, n) {
 							eprintf("%x - %s\n", n->offset, n->name);
 						}
 					}
@@ -250,7 +252,7 @@ static void r_sig_node_free (RSigNode *node) {
 
 static void r_sig_node_print (RSigNode *node, const int indent) {
 	int i;
-	ut32 cur;
+	ut64 cur;
 	RListIter *it;
 	RSigLeaf *leaf;
 
@@ -344,7 +346,7 @@ static void r_sig_parse_leaf (bb *b, RSigNode *node) {
 static void r_sig_parse_tree (bb *b, RSigNode *root_node) {
 	int tree_nodes;
 	int i, j;
-	ut32 cur;
+	ut64 bitmap;
 
 	tree_nodes = read_shift(b);
 
@@ -357,22 +359,21 @@ static void r_sig_parse_tree (bb *b, RSigNode *root_node) {
 		RSigNode *node = R_NEW0(RSigNode);
 		node->length = read_byte(b);
 
-		/*assert(node->length <= 0x20);*/
-
-		if (node->length >= 0x10)
-			node->mask = r_sig_explode_mask(b);
-		else
+		if (node->length < 0x10)
 			node->mask = read_shift(b);
-		cur = 1 << (node->length - 1);
+		else if (node->length <= 0x20)
+			node->mask = r_sig_explode_mask(b);
+		else if (node->length <= 0x40) 
+			node->mask = (ut64)r_sig_explode_mask(b) << 32 | r_sig_explode_mask(b);
+
+		bitmap = 1ULL << (node->length - 1); 
 
 		node->match = malloc(node->length);
 		node->maskp = malloc(node->length);
 
-		j = 0;
-		while (cur) {
-			node->maskp[j] = (node->mask&cur) ? 0x00 : 0xff;
-			node->match[j] = (node->mask&cur) ? 0x00 : read_byte(b);
-			j++; cur >>= 1;
+		for (j = 0; bitmap; j++, bitmap >>= 1) {
+			node->maskp[j] = (node->mask&bitmap) ? 0x00 : 0xff;
+			node->match[j] = (node->mask&bitmap) ? 0x00 : read_byte(b);
 		}
 		r_list_append(root_node->child_list, node);
 
@@ -380,15 +381,79 @@ static void r_sig_parse_tree (bb *b, RSigNode *root_node) {
 	}
 }
 
-static int r_sig_parse (const RCore *core, const char *path) {
-	FILE *fp;
-	idasig_t *header = NULL;
-	int modules;
-	char *name = NULL;
-	ut8 *buf = NULL;
-	unsigned long size;
+static int decompress (ut8 *buf, int buf_size, ut8 **out, int *out_size) {
+	z_stream *stream = R_NEW0(z_stream);
+	int wbits, dec_size = buf_size * 2;
+	ut8 *dec_buf = malloc(dec_size);
 
-	fp = r_sandbox_fopen(path, "rb");
+	*out = NULL;
+	*out_size = 0;
+
+	if (!stream || !dec_buf) 
+		goto err_exit;
+
+	/* Check for zlib header */
+	if (buf[0] == 0x78 && buf[1] == 0x9C)
+		wbits = MAX_WBITS;
+	else
+		wbits = -MAX_WBITS;
+
+	if (inflateInit2(stream, wbits) != Z_OK) 
+		goto err_exit;
+
+	stream->next_in = buf;
+	stream->avail_in = buf_size;
+	stream->next_out = dec_buf;
+	stream->avail_out = dec_size;
+
+	int ret, size;
+	for (;;) {
+		ret = inflate(stream, Z_FINISH);
+
+		switch (ret) {
+			case Z_STREAM_END:
+				*out = dec_buf;
+				*out_size = stream->next_out - dec_buf;
+
+				inflateEnd(stream);
+				free(stream);
+				return 0;
+
+			case Z_BUF_ERROR:
+				size = stream->next_out - dec_buf;
+				dec_size *= 2;
+				dec_buf = realloc(dec_buf, dec_size);
+				if (!dec_buf)
+					goto err_exit;
+				stream->next_out = dec_buf + size;
+				stream->avail_out = dec_size - size;
+				break;
+
+			default:
+				eprintf("Unhandled zlib error! (%i)\n", ret);
+				goto err_exit;
+		}
+	}
+err_exit:
+	inflateEnd(stream);
+
+	free(stream);
+	free(dec_buf);
+
+	*out = NULL;
+	*out_size = 0;
+
+	return -1;
+}
+
+static int r_sig_parse (const RCore *core, const char *filename) {
+	FILE *fp;
+	idasig_t *header;
+	char *name;
+	ut8 *buf, *dec_buf;
+	int size, dec_size;
+
+	fp = r_sandbox_fopen(filename, "rb");
 	if (!fp)
 		return R_FALSE;
 
@@ -405,15 +470,20 @@ static int r_sig_parse (const RCore *core, const char *path) {
 	if (memcmp(header->magic, "IDASGN", 6))
 		goto err_exit;
 
-	modules = header->modules;
+	if (header->version < 4 || header->version > 9)
+		goto err_exit;
 
-	if (header->version > 5) {
-		ut32 tmp;
-		if (header->version == 8)
-			fseek(fp, 2, SEEK_CUR);
-		fread(&tmp, 1, sizeof(ut32), fp);
-		/*modules = ntohl(tmp);*/
-		modules = tmp;
+	if (header->version > 7) {
+		idasig_v8_t v8;
+		fread(&v8, 1, sizeof(idasig_v8_t), fp);
+		header->modules = v8.modules;
+		if (v8.pattern_size > 0x40)
+			goto err_exit;
+	}
+	else if (header->version > 5) {
+		idasig_v6_t v6;
+		fread(&v6, 1, sizeof(idasig_v6_t), fp);
+		header->modules = v6.modules;
 	}
 
 	name = malloc(header->name_len + 1);
@@ -423,10 +493,11 @@ static int r_sig_parse (const RCore *core, const char *path) {
 	fread(name, 1, header->name_len, fp);
 	name[header->name_len] = '\0';
 
-	eprintf("Loading %s\n", path);
-	eprintf("for %s\n", name);
+	eprintf("Loading %s\n", filename);
+	eprintf("\"%s\"\n", name);
 	eprintf("version %i flags %04x\n", header->version, header->flags);
-	eprintf("%i modules\n", modules);
+
+	free(name);
 
 	size -= ftell(fp);
 
@@ -436,14 +507,27 @@ static int r_sig_parse (const RCore *core, const char *path) {
 
 	fread(buf, 1, size, fp);
 
-	if (header->flags&0x0010)
-		goto err_exit;
+	if (header->flags&0x0010) {
+		if (decompress(buf, size, &dec_buf, &dec_size))
+			goto err_exit;
+		free(buf);
+		eprintf("%i bytes expanded to %i bytes\n", size, dec_size);
+		buf = dec_buf;
+		size = dec_size;
+#if 0
+		FILE *out = fopen("dec.bin", "w+b");
+		if (out) {
+			fwrite(dec_buf, dec_size, 1, out);
+			fclose(out);
+		}
+#endif
+	}
 
 	RSigNode *node = R_NEW0(RSigNode);
 	node->child_list = r_list_new();
 	bb *b = init_bb(buf, size);
 	r_sig_parse_tree(b, node);
-	/*r_sig_node_print(node, -1);*/
+	r_sig_node_print(node, -1);
 
 	const unsigned int buffer_size = r_io_size (core->io);
 	ut8 *buffer = malloc (buffer_size);
@@ -463,7 +547,6 @@ static int r_sig_parse (const RCore *core, const char *path) {
 
 err_exit:
 	free(header);
-	free(name);
 	fclose(fp);
 	return R_TRUE;
 }
