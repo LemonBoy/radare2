@@ -131,22 +131,21 @@ R_API boolt r_anal_cc_update (RAnal *anal, RAnalCC *cc, RAnalOp *op) {
 		cc->jump = op->val; // syscall number
 		return R_FALSE;
 	case R_ANAL_OP_TYPE_XOR:
-		if (op->src[0] && op->src[0]->reg && op->dst && op->dst->reg && op->dst->reg->name) {
-			char *n1 = op->dst->reg->name;
-			char *n2 = op->src[0]->reg->name;
-			// XXX: must handle XOR operation properly
-			// if n1 == n2 then set to 0
-			if (!strcmp (n1, n2)) {
-				it = r_reg_get (anal->reg, n1, R_REG_TYPE_GPR);
-				r_reg_set_value (anal->reg, it, 0);
-			}
-		}
+		if (op->src[0] && op->dst &&
+		    op->src[0]->type == R_ANAL_VALUE_TYPE_REG &&
+		    op->dst->type == R_ANAL_VALUE_TYPE_REG &&
+		    op->src[0]->reg == op->dst->reg) {
+			// TODO:LEMON
+			/*it = r_reg_get (anal->reg, n1, R_REG_TYPE_GPR);*/
+			/*r_reg_set_value (anal->reg, it, 0);*/
+		    }
 		return R_TRUE;
 	case R_ANAL_OP_TYPE_MOV:
 		if (op->dst && op->dst->reg) {
-			it = r_reg_get (anal->reg, op->dst->reg->name, R_REG_TYPE_GPR);
-			if (it && op->src[0])
-				r_reg_set_value (anal->reg, it, op->src[0]->imm);
+			// TODO:LEMON
+			/*it = r_reg_get (anal->reg, op->dst->reg->name, R_REG_TYPE_GPR);*/
+			/*if (it && op->src[0])*/
+				/*r_reg_set_value (anal->reg, it, op->src[0]->imm);*/
 		}
 		return R_TRUE;
 	case R_ANAL_OP_TYPE_PUSH:

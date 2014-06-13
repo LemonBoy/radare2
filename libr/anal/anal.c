@@ -148,7 +148,7 @@ R_API int r_anal_use(RAnal *anal, const char *name) {
 	RListIter *it;
 	RAnalPlugin *h;
 	r_list_foreach (anal->plugins, it, h) {
-		if (!strcmp (h->name, name)) {
+		if (!strcmp (h->name, "x86.cs")) {
 			anal->cur = h;
 			r_anal_set_reg_profile (anal);
 			return R_TRUE;

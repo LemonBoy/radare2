@@ -110,18 +110,18 @@ R_API int r_anal_bb(RAnal *anal, RAnalBlock *bb, ut64 addr, ut8 *buf, ut64 len, 
 			goto beach;
 		case R_ANAL_OP_TYPE_LEA:
 {
-			RAnalValue *src = op->src[0];
-			if (src && src->reg && anal->reg && anal->reg->name) {
-				const char *pc = anal->reg->name[R_REG_NAME_PC];
-				RAnalValue *dst = op->dst;
-				if (dst && dst->reg && !strcmp (src->reg->name, pc)) {
-					int memref = anal->bits/8;
-					ut8 b[8];
-					ut64 ptr = idx+addr+src->delta;
-					anal->iob.read_at (anal->iob.io, ptr, b, memref);
-					r_anal_ref_add (anal, ptr, addr+idx-op->size, 'd');
-				}
-			}
+			/*RAnalValue *src = op->src[0];*/
+			/*if (src && src->reg && anal->reg && anal->reg->name) {*/
+				/*const char *pc = anal->reg->name[R_REG_NAME_PC];*/
+				/*RAnalValue *dst = op->dst;*/
+				/*if (dst && dst->reg && !strcmp (src->reg->name, pc)) {*/
+					/*int memref = anal->bits/8;*/
+					/*ut8 b[8];*/
+					/*ut64 ptr = idx+addr+src->delta;*/
+					/*anal->iob.read_at (anal->iob.io, ptr, b, memref);*/
+					/*r_anal_ref_add (anal, ptr, addr+idx-op->size, 'd');*/
+				/*}*/
+			/*}*/
 }
 		}
 		r_anal_op_free (op);

@@ -68,6 +68,7 @@ R_API void r_anal_fcn_free(void *_fcn) {
 	r_list_free (fcn->xrefs);
 	r_list_free (fcn->vars);
 	r_list_free (fcn->locs);
+	r_list_free (fcn->bbs);
 #if 0
 	// XXX: some shared basic blocks make it crash.
 	// TODO: fix it with sdb
@@ -322,31 +323,33 @@ static int fcn_recurse(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut6
 			}
 			break;
 		case R_ANAL_OP_TYPE_JMP:
-			if (!r_anal_fcn_xref_add (anal, fcn, op.addr, op.jump,
-					R_ANAL_REF_TYPE_CODE)) {
+			if (op.dst->type == R_ANAL_VALUE_TYPE_IMM) {
+				if (!r_anal_fcn_xref_add (anal, fcn, op.addr, op.jump,
+						R_ANAL_REF_TYPE_CODE)) {
 #if 0
-				FITFCNSZ();
-				r_anal_op_fini (&op);
-				return R_ANAL_RET_ERROR;
+					FITFCNSZ();
+					r_anal_op_fini (&op);
+					return R_ANAL_RET_ERROR;
 #endif
-			}
-			if (!overlapped) {
-				bb->jump = op.jump;
-				bb->fail = UT64_MAX;
-			}
-			// hardcoded jmp size // must be checked at the end wtf?
-			if (op.jump>fcn->addr && op.jump<(fcn->addr+fcn->size)) {
-				/* jump inside the same function */
-				FITFCNSZ();
-				return R_ANAL_RET_END;
-			} else {
-				if (op.jump < addr-512 && op.jump<addr) {
-					FITFCNSZ();
-					return R_ANAL_RET_END;
 				}
-				if (op.jump > addr+512) {
+				if (!overlapped) {
+					bb->jump = op.jump;
+					bb->fail = UT64_MAX;
+				}
+				// hardcoded jmp size // must be checked at the end wtf?
+				if (op.jump>fcn->addr && op.jump<(fcn->addr+fcn->size)) {
+					/* jump inside the same function */
 					FITFCNSZ();
 					return R_ANAL_RET_END;
+				} else {
+					if (op.jump < addr-512 && op.jump<addr) {
+						FITFCNSZ();
+						return R_ANAL_RET_END;
+					}
+					if (op.jump > addr+512) {
+						FITFCNSZ();
+						return R_ANAL_RET_END;
+					}
 				}
 			}
 			break;

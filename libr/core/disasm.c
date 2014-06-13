@@ -1068,53 +1068,27 @@ static int handle_print_meta_infos (RCore * core, RDisasmState *ds, ut8* buf, in
 }
 
 static void handle_instruction_mov_lea (RCore *core, RDisasmState *ds, int idx) {
-	RAnalValue *src;
-	switch (ds->analop.type) {
-	case R_ANAL_OP_TYPE_MOV:
-		src = ds->analop.src[0];
-		if (src && src->memref>0 && src->reg) {
-			if (core->anal->reg && core->anal->reg->name) {
-				const char *pc = core->anal->reg->name[R_REG_NAME_PC];
-				RAnalValue *dst = ds->analop.dst;
-				if (dst && dst->reg && dst->reg->name)
-				if (!strcmp (src->reg->name, pc)) {
-					RFlagItem *item;
-					ut8 b[8];
-					ut64 ptr = idx+ds->addr+src->delta+ds->analop.size;
-					ut64 off = 0LL;
-					r_core_read_at (core, ptr, b, src->memref);
-					off = r_mem_get_num (b, src->memref, 1);
-					item = r_flag_get_i (core->flags, off);
-					r_cons_printf ("; MOV %s = [0x%"PFMT64x"] = 0x%"PFMT64x" %s\n",
-							dst->reg->name, ptr, off, item?item->name: "");
-				}
-			}
-		}
-		break;
-// TODO: get from meta anal?
-	case R_ANAL_OP_TYPE_LEA:
-		src = ds->analop.src[0];
-		if (src && src->reg && core->anal->reg && *(core->anal->reg->name)) {
-			const char *pc = core->anal->reg->name[R_REG_NAME_PC];
-			RAnalValue *dst = ds->analop.dst;
-			if (dst && dst->reg && !strcmp (src->reg->name, pc)) {
-				int index = 0;
-				int memref = core->assembler->bits/8;
-				RFlagItem *item;
-				ut8 b[64];
-				ut64 ptr = index+ds->addr+src->delta+ds->analop.size;
-				ut64 off = 0LL;
-				r_core_read_at (core, ptr, b, sizeof (b)); //memref);
-				off = r_mem_get_num (b, memref, 1);
-				item = r_flag_get_i (core->flags, off);
-				{
-				char s[64];
-				r_str_ncpy (s, (const char *)b, sizeof (s));
-				r_cons_printf ("; LEA %s = [0x%"PFMT64x"] = 0x%"PFMT64x" \"%s\"\n",
-						dst->reg->name, ptr, off, item?item->name: s);
-				}
-			}
-		}
+	RAnalValue *src, *dst;
+	const char *pc = core->anal->reg->name[R_REG_NAME_PC];
+	const char *sp = core->anal->reg->name[R_REG_NAME_SP];
+	char *tmp;
+
+	src = ds->analop.src[0];
+	dst = ds->analop.dst;
+
+	// TODO:LEMON
+
+	if (src && src->type == R_ANAL_VALUE_TYPE_MEM) {
+		/*tmp = r_anal_value_to_string (src);*/
+		/*if (tmp) { r_cons_printf("%s\n", tmp); free (tmp); }*/
+		/*if (src->reg == 41) // rip*/
+			/*r_cons_printf("[rip+r%i+0x%"PFMT64x"x]\n", src->index, src->disp);*/
+	}
+	if (dst && dst->type == R_ANAL_VALUE_TYPE_MEM) {
+		/*tmp = r_anal_value_to_string (dst);*/
+		/*if (tmp) { r_cons_printf("%s\n", tmp); free (tmp); }*/
+		/*if (dst->reg == 41) // rip*/
+			/*r_cons_printf("[rip+r%i+0x%"PFMT64x"x]\n", dst->index, dst->disp);*/
 	}
 }
 
