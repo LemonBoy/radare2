@@ -1072,7 +1072,7 @@ static void handle_instruction_mov_lea (RCore *core, RDisasmState *ds, int idx) 
 	src = ds->analop.src[0];
 	dst = ds->analop.dst;
 
-	// TODO:LEMON
+	// TODO:LEMON Do something useful here...
 
 	if (src && src->type == R_ANAL_VALUE_TYPE_MEM) {
 		/*tmp = r_anal_value_to_string (src);*/
@@ -1267,6 +1267,7 @@ static void handle_print_core_vmode (RCore *core, RDisasmState *ds) {
 }
 
 static void handle_print_cc_update (RCore *core, RDisasmState *ds) {
+	return;
 	// declare static since this variable is reused locally, and needs to maintain
 	// state
 	static RAnalCC cc = {0};

@@ -21,11 +21,10 @@ R_API RAnalValue *r_anal_value_copy(RAnalValue *ov) {
 	return v;
 }
 
-// TODO: move into .h as #define free
 R_API void r_anal_value_free(RAnalValue *value) {
 	if (value) {
-		free (value->reg);
-		free (value->index);
+		// value->reg and value->free are shared pointers
+		// Don't free them here
 		free (value);
 	}
 }
@@ -70,8 +69,6 @@ R_API int r_anal_value_set_ut64(RAnal *anal, RAnalValue *val, ut64 num) {
 R_API char *r_anal_value_to_string (RAnalValue *value) {
 	char *out;
 
-#define ss(x) (x)?(x)->name:"(null)"
-
 	switch (value->type) {
 		case R_ANAL_VALUE_TYPE_IMM:
 			out = r_str_newf ("0x%"PFMT64x, value->imm); 
@@ -79,9 +76,9 @@ R_API char *r_anal_value_to_string (RAnalValue *value) {
 		case R_ANAL_VALUE_TYPE_MEM:
 			out = r_str_new ("[");
 			if (value->reg)
-				out = r_str_concatf (out, "%s", ss(value->reg));
+				out = r_str_concatf (out, "%s", value->reg);
 			if (value->index)
-				out = r_str_concatf (out, "+%s", ss(value->index));
+				out = r_str_concatf (out, "+%s", value->index);
 			if (value->disp)
 				out = r_str_concatf (out, "+0x%"PFMT64x, value->disp);
 			out = r_str_concat (out, "]");
