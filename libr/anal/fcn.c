@@ -68,6 +68,7 @@ R_API void r_anal_fcn_free(void *_fcn) {
 	r_list_free (fcn->xrefs);
 	r_list_free (fcn->vars);
 	r_list_free (fcn->locs);
+	r_list_free (fcn->bbs);
 #if 0
 	// XXX: some shared basic blocks make it crash.
 	// TODO: fix it with sdb
