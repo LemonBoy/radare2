@@ -315,7 +315,8 @@ static RAnalValue *
 value_fill_addr_pc_disp(const ut64 addr, const st64 disp)
 {
   RAnalValue *val = r_anal_value_new();
-  val->base = addr + disp;
+  val->type = R_ANAL_VALUE_TYPE_IMM;
+  val->imm = addr + disp;
   return val;
 }
 
@@ -324,8 +325,9 @@ value_fill_addr_reg_regdelta(RAnal const * const anal,
 			     const int ireg, const int iregdelta)
 {
   RAnalValue *val = r_anal_value_new();
-  val->reg = r_reg_get(anal->reg, gpr_regs[ireg], R_REG_TYPE_GPR);
-  val->reg = r_reg_get(anal->reg, gpr_regs[iregdelta], R_REG_TYPE_GPR);
+  val->type = R_ANAL_VALUE_TYPE_REG;
+  val->reg = ireg;
+  val->index = iregdelta;
   return val;
 }
 
@@ -334,8 +336,9 @@ value_fill_addr_reg_disp(RAnal const * const anal,
 			     const int ireg, const st64 disp)
 {
   RAnalValue *val = r_anal_value_new();
-  val->reg = r_reg_get(anal->reg, gpr_regs[ireg], R_REG_TYPE_GPR);
-  val->delta = disp;
+  val->type = R_ANAL_VALUE_TYPE_REG;
+  val->reg = ireg;
+  val->disp = disp;
   return val;
 }
 

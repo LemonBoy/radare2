@@ -6,9 +6,6 @@
 #include <r_asm.h>
 #include <r_anal.h>
 
-
-#define API static
-
 #define LONG_SIZE 4
 #define WORD_SIZE 2
 #define BYTE_SIZE 1
@@ -95,37 +92,44 @@ static ut64 disarm_8bit_offset (unsigned int pc, unsigned int insoff) {
 #endif
 static char *regs[]={"r0","r1","r2","r3","r4","r5","r6","r7","r8","r9","r10","r11","r12","r13","r14","r15","pc"};
 
-static RAnalValue *anal_fill_ai_rg(RAnal *anal, int idx) {
+static RAnalValue *anal_fill_ai_rg(RAnal *anal, int reg) {
         RAnalValue *ret = r_anal_value_new ();
-        ret->reg = r_reg_get (anal->reg,regs[idx],R_REG_TYPE_GPR);
+	ret->type = R_ANAL_VALUE_TYPE_REG;
+        ret->reg = reg;
         return ret;
 }
 
 static RAnalValue *anal_fill_im(RAnal *anal, st32 v) {
         RAnalValue *ret = r_anal_value_new ();
+	ret->type = R_ANAL_VALUE_TYPE_IMM;
         ret->imm = v;
         return ret;
 }
 
 /* Implements @(disp,Rn) , size=1 for .b, 2 for .w, 4 for .l */
-static RAnalValue *anal_fill_reg_disp_mem(RAnal *anal, int reg, st64 delta, st64 size) {
-	RAnalValue *ret = anal_fill_ai_rg(anal,reg);
-	ret->memref = size;
-	ret->delta = delta*size;
+static RAnalValue *anal_fill_reg_disp_mem(RAnal *anal, int reg, st64 delta, int size) {
+	RAnalValue *ret = r_anal_value_new ();
+	ret->type = R_ANAL_VALUE_TYPE_MEM;
+	ret->size = size;
+	ret->disp = delta * size;
 	return ret;
 }
 
-static RAnalValue *anal_fill_reg_ref(RAnal *anal, int reg, st64 size){
-	RAnalValue *ret = anal_fill_ai_rg(anal,reg);
-	ret->memref = size;
+static RAnalValue *anal_fill_reg_ref(RAnal *anal, int reg, int size){
+	RAnalValue *ret = r_anal_value_new ();
+	ret->type = R_ANAL_VALUE_TYPE_MEM;
+	ret->reg = reg;
+	ret->size = size;
 	return ret;
 }
 
 /* @(R0,Rx) references for all sizes */
-static RAnalValue *anal_fill_r0_reg_ref(RAnal *anal, int reg,st64 size){
-	RAnalValue *ret = anal_fill_ai_rg(anal,0);
-	ret->regdelta = r_reg_get(anal->reg,regs[reg],R_REG_TYPE_GPR);
-	ret->memref = size;
+static RAnalValue *anal_fill_r0_reg_ref(RAnal *anal, int reg, int size){
+	RAnalValue *ret = r_anal_value_new ();
+	ret->type = R_ANAL_VALUE_TYPE_MEM;
+	ret->reg = 0;
+	ret->index = reg; 
+	ret->size = size;
 	return ret;
 }
 
@@ -138,22 +142,20 @@ static st32 sign_extend_12b(st32 v){
 }
 #endif
 
-static RAnalValue *anal_pcrel_disp_mov(RAnal* anal,RAnalOp* op,st8 disp){
+static RAnalValue *anal_pcrel_disp_mov(RAnal* anal, RAnalOp* op, st8 disp){
 	RAnalValue *ret = r_anal_value_new ();
-	ret->base = op->addr;
-	ret->delta = (op->addr & 0x02)?WORD_SIZE:LONG_SIZE;
-	ret->delta = ret->delta + disp*LONG_SIZE;
+	ret->type = R_ANAL_VALUE_TYPE_IMM;
+	ret->imm = op->addr + (op->addr & 0x02)?WORD_SIZE:LONG_SIZE + disp*LONG_SIZE;
 	return ret;
 }
 
-static RAnalValue *anal_regrel_jump(RAnal* anal,RAnalOp* op, ut8 reg){
+static RAnalValue *anal_regrel_jump(RAnal* anal, RAnalOp* op, int reg){
 	RAnalValue *ret = r_anal_value_new ();
-	ret->reg = r_reg_get(anal->reg,regs[reg],R_REG_TYPE_GPR);
-	ret->delta = op->addr+4;
+	ret->type = R_ANAL_VALUE_TYPE_REG;
+	ret->reg = reg;
+	ret->disp = op->addr+4;
 	return ret;
 }
-
-
 
 /* 16 decoder routines, based on 1st nibble value */
 static int first_nibble_is_0(RAnal* anal, RAnalOp* op, ut16 code){

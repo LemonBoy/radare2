@@ -570,17 +570,26 @@ typedef struct r_anal_hint_t {
 	int bits;
 } RAnalHint;
 
+enum {
+	R_ANAL_VALUE_TYPE_INVALID,
+	R_ANAL_VALUE_TYPE_IMM,
+	R_ANAL_VALUE_TYPE_REG,
+	R_ANAL_VALUE_TYPE_FP,
+	R_ANAL_VALUE_TYPE_MEM,
+};
+
 // mul*value+regbase+regidx+delta
 typedef struct r_anal_value_t {
-	int absolute; // if true, unsigned cast is used
-	int memref; // is memory reference? which size? 1, 2 ,4, 8
-	ut64 base ; // numeric address
-	st64 delta; // numeric delta
-	st64 imm; // immediate value
-	int mul; // multiplier (reg*4+base)
-	ut16 sel; // segment selector
-	RRegItem *reg; // register index used (-1 if no reg)
-	RRegItem *regdelta; // register index used (-1 if no reg)
+	int type : 8;
+
+	ut64 imm;
+	double fp;
+	RRegItem *reg;
+	RRegItem *index;
+	int shift : 8;
+	int shift_by_reg : 8;
+	st64 disp;
+	int size : 8;
 } RAnalValue;
 
 typedef struct r_anal_op_t {
