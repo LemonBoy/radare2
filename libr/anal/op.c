@@ -12,6 +12,7 @@ R_API RAnalOp *r_anal_op_new () {
 		op->fail = -1;
 		op->ptr = -1;
 		op->val = -1;
+		op->cond = R_ANAL_COND_AL;
 		r_strbuf_init (&op->esil);
 	}
 	return op;
@@ -24,13 +25,19 @@ R_API RList *r_anal_op_list_new() {
 }
 
 R_API void r_anal_op_fini(RAnalOp *op) {
-	r_anal_value_free (op->src[0]);
-	r_anal_value_free (op->src[1]);
-	r_anal_value_free (op->src[2]);
-	r_anal_value_free (op->dst);
-	r_anal_switch_op_free (op->switch_op);
-	free (op->mnemonic);
+	/*r_anal_value_free (op->src[0]);*/
+	/*r_anal_value_free (op->src[1]);*/
+	/*r_anal_value_free (op->src[2]);*/
+	/*r_anal_value_free (op->dst);*/
+	/*r_anal_switch_op_free (op->switch_op);*/
+	/*free (op->mnemonic);*/
 	memset (op, 0, sizeof (RAnalOp));
+	op->addr = -1;
+	op->jump = -1;
+	op->fail = -1;
+	op->ptr = -1;
+	op->val = -1;
+	op->cond = R_ANAL_COND_AL;
 }
 
 R_API void r_anal_op_free(void *_op) {
@@ -40,13 +47,38 @@ R_API void r_anal_op_free(void *_op) {
 }
 
 R_API int r_anal_op(RAnal *anal, RAnalOp *op, ut64 addr, const ut8 *data, int len) {
-	int ret = R_FALSE;
-	if (len>0 && anal && memset (op, 0, sizeof (RAnalOp)) &&
-		anal->cur && anal->cur->op) {
-		ret = anal->cur->op (anal, op, addr, data, len);
-		if (ret<1) op->type = R_ANAL_OP_TYPE_ILL;
-	}
+	int ret;
+
+	if (len < 0 || !data || !op )
+		return R_FALSE;
+
+	if (!anal || !anal->cur || !anal->cur->op)
+		return R_FALSE;
+
+	r_anal_op_fini (op);
+
+	ret = anal->cur->op (anal, op, addr, data, len);
+	if (ret<1) 
+		op->type = R_ANAL_OP_TYPE_ILL;
+
 	return ret;
+}
+
+R_API int r_anal_op_write_reg (RAnalOp *op, char *reg) {
+	if (!op || !reg || !op->dst || !op->dst->reg)
+		return R_FALSE;
+	return (strcmp(op->dst->reg->name, reg)) ? R_TRUE : R_FALSE;
+}
+
+R_API int r_anal_op_read_reg (RAnalOp *op, char *reg) {
+	int i;
+	if (!op || !reg)
+		return R_FALSE;
+	for (i = 0; i < 3; i++) {
+		if (op->src[i] && op->src[i]->reg && !strcmp(op->src[i]->reg->name, reg))
+			return R_TRUE;
+	}
+	return R_FALSE;
 }
 
 R_API RAnalOp *r_anal_op_copy (RAnalOp *op) {

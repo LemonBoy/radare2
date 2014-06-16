@@ -50,6 +50,31 @@ static RAnalValue *convert_cs_to_r(RAnal *anal, csh handle, cs_x86_op *in) {
 	return out;
 }
 
+static int convert_cs_cond_from_insn (cs_insn *in) {
+	switch (in->id) {
+		case X86_INS_JL:
+		case X86_INS_JLE:
+		case X86_INS_JA:
+		case X86_INS_JAE:
+		case X86_INS_JB:
+		case X86_INS_JBE:
+		case X86_INS_JCXZ:
+		case X86_INS_JECXZ:
+		case X86_INS_JO:
+		case X86_INS_JNO:
+		case X86_INS_JS:
+		case X86_INS_JNS:
+		case X86_INS_JP:
+		case X86_INS_JNP:
+		case X86_INS_JE:
+		case X86_INS_JNE:
+		case X86_INS_JG:
+		case X86_INS_JGE:
+			return -1;
+	}
+	return R_ANAL_COND_AL;
+}
+
 static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 	csh handle;
 	cs_insn *insn;
@@ -94,7 +119,6 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 	switch (insn->id) {
 		case X86_INS_FNOP:
 		case X86_INS_NOP:
-		case X86_INS_HLT:
 			op->type = R_ANAL_OP_TYPE_NOP;
 			if (a->decode)
 				esilprintf (op, "");
@@ -152,6 +176,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 		case X86_INS_POPCNT:
 			op->type = R_ANAL_OP_TYPE_POP;
 			break;
+		case X86_INS_HLT:
 		case X86_INS_RET:
 		case X86_INS_RETF:
 		case X86_INS_IRET:
@@ -200,6 +225,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 		case X86_INS_JNE:
 		case X86_INS_JG:
 		case X86_INS_JGE:
+			op->cond = convert_cs_cond_from_insn(insn);
 			op->type = R_ANAL_OP_TYPE_CJMP;
 			op->jump = INSOP(0).imm;
 			op->fail = addr+op->size;
@@ -208,7 +234,6 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 		case X86_INS_LCALL:
 			if (INSOP(0).type == X86_OP_IMM) {
 				op->type = R_ANAL_OP_TYPE_CALL;
->>>>>>> shit
 				op->jump = INSOP(0).imm;
 			} else {
 				op->type = R_ANAL_OP_TYPE_UCALL;
@@ -220,68 +245,6 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 		case X86_INS_LJMP:
 			if (INSOP(0).type == X86_OP_IMM) {
 				op->type = R_ANAL_OP_TYPE_JMP;
-<<<<<<< HEAD
-				if (a->decode) {
-					ut64 dst = INSOP(0).imm;
-					esilprintf (op, "0x%"PFMT64x",%s,=", dst, pc);
-				}
-				break;
-			case X86_INS_IN:
-			case X86_INS_INSW:
-			case X86_INS_INSD:
-			case X86_INS_INSB:
-			case X86_INS_OUT:
-			case X86_INS_OUTSB:
-			case X86_INS_OUTSD:
-			case X86_INS_OUTSW:
-				op->type = R_ANAL_OP_TYPE_IO;
-				break;
-			case X86_INS_VXORPD:
-			case X86_INS_VXORPS:
-			case X86_INS_VPXORD:
-			case X86_INS_VPXORQ:
-			case X86_INS_VPXOR:
-			case X86_INS_KXORW:
-			case X86_INS_PXOR:
-			case X86_INS_XOR:
-				op->type = R_ANAL_OP_TYPE_XOR;
-				break;
-			case X86_INS_OR:
-				op->type = R_ANAL_OP_TYPE_OR;
-				break;
-			case X86_INS_SUB:
-			case X86_INS_DEC:
-			case X86_INS_PSUBB:
-			case X86_INS_PSUBW:
-			case X86_INS_PSUBD:
-			case X86_INS_PSUBQ:
-			case X86_INS_PSUBSB:
-			case X86_INS_PSUBSW:
-			case X86_INS_PSUBUSB:
-			case X86_INS_PSUBUSW:
-				op->type = R_ANAL_OP_TYPE_SUB;
-				break;
-			case X86_INS_AND:
-			case X86_INS_ANDN:
-			case X86_INS_ANDPD:
-			case X86_INS_ANDPS:
-			case X86_INS_ANDNPD:
-			case X86_INS_ANDNPS:
-				op->type = R_ANAL_OP_TYPE_AND;
-				break;
-			case X86_INS_DIV:
-				op->type = R_ANAL_OP_TYPE_DIV;
-				break;
-			case X86_INS_MUL:
-				op->type = R_ANAL_OP_TYPE_MUL;
-				break;
-			case X86_INS_INC:
-			case X86_INS_ADD:
-			case X86_INS_FADD:
-			case X86_INS_ADDPD:
-				op->type = R_ANAL_OP_TYPE_ADD;
-				break;
-=======
 				op->jump = INSOP(0).imm;
 			} else {
 				op->type = R_ANAL_OP_TYPE_UJMP;
@@ -289,8 +252,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 			}
 			if (a->decode) {
 				ut64 dst = INSOP(0).imm;
-				esilprintf (op, "%s=0x%"PFMT64x, pc, dst);
->>>>>>> shit
+				esilprintf (op, "0x%"PFMT64x",%s,=", dst, pc);
 			}
 			break;
 		case X86_INS_IN:
