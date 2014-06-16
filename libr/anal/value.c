@@ -87,7 +87,5 @@ R_API char *r_anal_value_to_string (RAnalValue *value) {
 			out = NULL;
 	}
 
-#undef ss
-
 	return out;
 }

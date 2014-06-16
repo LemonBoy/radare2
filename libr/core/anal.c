@@ -555,7 +555,7 @@ R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int dept
 			fcn->addr = at;
 			/* TODO: Dupped analysis, needs more optimization */
 			fcn->depth = 256;
-			r_core_anal_bb (core, fcn, fcn->addr, R_TRUE);
+			/*r_core_anal_bb (core, fcn, fcn->addr, R_TRUE);*/
 // hack
 			if (fcn->depth == 0) {
 				eprintf ("Analysis depth reached at 0x%08"PFMT64x"\n", fcn->addr);
@@ -575,7 +575,7 @@ R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int dept
 			}
 			// XXX: this looks weird
 			r_anal_fcn_insert (core->anal, fcn);
-			if (has_next) {
+			if (0 && has_next) {
 				int i;
 				ut64 addr = fcn->addr + fcn->size;
 				for (i=0; i<nexti; i++) {
@@ -623,7 +623,7 @@ R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int dept
 	} while (fcnlen != R_ANAL_RET_END);
 	free (buf);
 
-	if (has_next) {
+	if (0 && has_next) {
 		for (i=0; i<nexti; i++) {
 			if (!next[i]) continue;
 			r_core_anal_fcn (core, next[i], from, 0, depth-1);
@@ -633,6 +633,7 @@ R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int dept
 	return R_TRUE;
 
 error:
+	eprintf("error clause\n");
 	free (buf);
 	// ugly hack to free fcn
 	if (fcn) {

@@ -9,6 +9,7 @@
 #define EXISTS(x,y...) snprintf (key, sizeof(key)-1,x,##y),sdb_exists(DB,key)
 #define SETKEY(x,y...) snprintf (key, sizeof (key)-1, x,##y);
 
+#define VERBOSE_ANAL if(1)
 #define VERBOSE_DELAY if(0)
 
 R_API const char *r_anal_fcn_type_tostring(int type) {
@@ -140,298 +141,117 @@ static RAnalBlock *bbget(RAnalFunction *fcn, ut64 addr) {
 	return NULL;
 }
 
-#if 0
+int r_anal_op_break_flow (RAnal *anal, RAnalOp *op) {
+	char *pc_str;
+	pc_str = (anal->reg) ? anal->reg->name[R_REG_NAME_PC] : NULL;
+	// eob ?
+	switch (op->type) {
+		/* Terminate on unconditional jumps */
+		case R_ANAL_OP_TYPE_UJMP:
+		case R_ANAL_OP_TYPE_JMP:
+		case R_ANAL_OP_TYPE_CJMP:
+		case R_ANAL_OP_TYPE_RET:
+			return R_TRUE;
+			/*return (op->cond != R_ANAL_COND_AL) ? R_FALSE : R_TRUE;*/
+		/* Handle every other operation done on the PC */
+		/*default:*/
+			/*if (pc_str && r_anal_op_write_reg (op, pc_str))*/
+				/*return (op->cond != R_ANAL_COND_AL) ? R_FALSE : R_TRUE;*/
+	}
+	return R_FALSE;
+}
+
+#if 1
 static int bbsum(RAnalFunction *fcn) {
 	RListIter *iter;
 	RAnalBlock *bb;
-	ut32 size = 0;
+	int size = 0;
 	r_list_foreach (fcn->bbs, iter, bb) {
+		eprintf("> From %08x To %08x\n", bb->addr, bb->addr+bb->size);
 		size += bb->size;
 	}
 	return size;
 }
 #endif
 
-#define FITFCNSZ() {st64 n=bb->addr+bb->size-fcn->addr; \
-	if(n<0) { fcn->addr += n; fcn->size = -n; } else \
-	if(fcn->size<n)fcn->size=n; }
-static int fcn_recurse(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 len, int depth) {
-	int ret = R_ANAL_RET_END;
-	ut8 bbuf[8096];
-	int overlapped = 0;
-	char *varname;
-	RAnalOp op = {0};
-	int oplen, idx = 0;
-	int delay_cnt = 0, delay_idx = 0, delay_after = 0, delay_pending = 0, delay_adjust = 0, undelayed_idx = 0;
-	// add basic block
-	RAnalBlock *bb = NULL;
-	RAnalBlock *bbg = NULL;
-	if (depth<1) {
-		return R_ANAL_RET_ERROR; // MUST BE TOO DEEP
-	}
-	if (bbget (fcn, addr)) {
-		return R_ANAL_RET_ERROR; // MUST BE DUP
-	}
-	bb = r_anal_bb_new();
+int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RList *queue) {
+	RAnalBlock *bb;
+	RAnalOp *op;
+	int pos;
+	int ret;
+	int oplen;
+
+	bb = r_anal_bb_new ();
 	bb->addr = addr;
 	bb->size = 0;
 	bb->jump = UT64_MAX;
 	bb->fail = UT64_MAX;
 	bb->type = 0; // TODO
-	r_list_append (fcn->bbs, bb);
+
+	op = r_anal_op_new ();
+
+	ret = R_ANAL_RET_ERROR;
+	pos = 0;
 
 	VERBOSE_ANAL eprintf ("Append bb at 0x%08"PFMT64x" (fcn)\n", addr);
-
-	while (idx < len) {
-		r_anal_op_fini (&op);
-		if (buf[idx]==buf[idx+1] && buf[idx]==0xff && buf[idx+2]==0xff) {
-			FITFCNSZ();
-			VERBOSE_ANAL eprintf ("FFFF opcode at 0x%08"PFMT64x"\n", addr+idx);
-			return R_ANAL_RET_ERROR;
-		}
-		// check if opcode is in another basic block
-		// in that case we break
-		if ((oplen = r_anal_op (anal, &op, addr+idx, buf+idx, len-idx)) < 1) {
-			VERBOSE_ANAL eprintf ("Unknown opcode at 0x%08"PFMT64x"\n", addr+idx);
-			if (idx == 0) {
-				r_anal_op_fini (&op);
-				FITFCNSZ();
-				return R_ANAL_RET_END;
-			} else {
-                            break; // unspecified behaviour
-			}
-		}
-		if (idx>0 && !overlapped) {
-			bbg = bbget (fcn, addr+idx);
-			if (bbg && bbg != bb) {
-				bb->jump = addr+idx;
-				overlapped = 1;
-				VERBOSE_ANAL eprintf ("Overlapped at 0x%08"PFMT64x"\n", addr+idx);
-				//return R_ANAL_RET_END;
-			}
-		}
-		idx += oplen;
-		undelayed_idx = idx;
-		if (!overlapped) {
-			bb->size += oplen;
-			fcn->ninstr++;
-		//	FITFCNSZ(); // defer this, in case this instruction is a branch delay entry
-		//	fcn->size += oplen; /// XXX. must be the sum of all the bblocks
-		}
-		if (op.delay>0 && delay_pending == 0) {
-			// Handle first pass through a branch delay jump:
-			// Come back and handle the current instruction later.
-			// Save the location of it in `delay_idx`
-			// note, we have still increased size of basic block
-			// (and function)
-			VERBOSE_DELAY eprintf ("Enter branch delay at 0x%08"PFMT64x ". bb->sz=%d\n", addr+idx-oplen, bb->size);
-			delay_idx = idx - oplen;
-			delay_cnt = op.delay;
-			delay_pending = 1; // we need this in case the actual idx is zero...
-			delay_adjust = !overlapped; // adjustment is required later to avoid double count
-			continue;
+	while (pos < size) {
+		// Duplicated
+		if (bbget (fcn, addr+pos)) {
+			/*ret = (bb->size) ? R_ANAL_RET_END : R_ANAL_RET_DUP;*/
+			ret = (bb->size) ? R_ANAL_RET_END : R_ANAL_RET_END;
+			break;
 		}
 
-		if (delay_cnt > 0) {
-                        // if we had passed a branch delay instruction, keep
-                        // track of how many still to process.
-			delay_cnt--;
-			if (delay_cnt == 0) {
-				VERBOSE_DELAY eprintf ("Last branch delayed opcode at 0x%08"PFMT64x ". bb->sz=%d\n", addr+idx-oplen, bb->size);
-				delay_after = idx;
-				idx = delay_idx;
-				// At this point, we are still looking at the
-				// last instruction in the branch delay group.
-				// Next time, we will again be looking
-				// at the original instruction that entered
-				// the branch delay.
-			}
+		if ((oplen = r_anal_op (anal, op, addr+pos, buf+pos, size-pos)) < 1) {
+			eprintf("op decode error\n");
+			ret = R_ANAL_RET_ERROR;
+			break;
 		}
-		else if (op.delay > 0 && delay_pending) {
-			VERBOSE_DELAY eprintf ("Revisit branch delay jump at 0x%08"PFMT64x ". bb->sz=%d\n", addr+idx-oplen, bb->size);
-			// This is the second pass of the branch delaying opcode
-			// But we also already counted this instruction in the
-			// size of the current basic block, so we need to fix that
-			if (delay_adjust) {
-				bb->size -= oplen;
-				fcn->ninstr--;
-				VERBOSE_DELAY eprintf ("Correct for branch delay @ %08"PFMT64x " bb.addr=%08"PFMT64x " corrected.bb=%d f.uncorr=%d\n", 
-						addr + idx - oplen, bb->addr, bb->size, fcn->size);
-				FITFCNSZ();
-			}
-			// Next time, we go to the opcode after the delay count
-			// Take care not to use this below, use undelayed_idx instead ...
-			idx = delay_after;
-			delay_pending = delay_after = delay_idx = delay_adjust = 0;
-		}
-		// Note: if we got two branch delay instructions in a row due to an
-		// compiler bug or junk or something it wont get treated as a delay
 
-		/* TODO: Parse fastargs (R_ANAL_VAR_ARGREG) */
-		switch (op.stackop) {
-		case R_ANAL_STACK_INC:
-			fcn->stack += op.val;
-			break;
-		// TODO: use fcn->stack to know our stackframe
-		case R_ANAL_STACK_SET:
-			if (op.ptr > 0) {
-				varname = r_str_newf ("arg_%x", op.ptr);
-				r_anal_var_add (anal, fcn->addr, 0, op.ptr,
-						'a', NULL, anal->bits/8, varname);
-				// TODO: DIR_IN?
-						//R_ANAL_VAR_SCOPE_ARG|R_ANAL_VAR_DIR_IN, NULL, varname, 1);
-			} else {
-				varname = r_str_newf ("local_%x", -op.ptr);
-				r_anal_var_add (anal, fcn->addr, 0, -op.ptr, 'v', NULL, 
-						anal->bits/8, varname);
-						//R_ANAL_VAR_SCOPE_LOCAL|R_ANAL_VAR_DIR_NONE, NULL, varname, 1);
-			}
-			free (varname);
-			break;
-		// TODO: use fcn->stack to know our stackframe
-		case R_ANAL_STACK_GET:
-			if (op.ptr > 0) {
-				varname = r_str_newf ("arg_%x", op.ptr);
-				r_anal_var_add (anal, fcn->addr, 1, op.ptr, 'v', NULL, anal->bits/8, varname);
-				r_anal_var_access (anal, fcn->addr, 'a', 0, op.ptr, 0, op.addr); //, NULL, varname, 0);
-						//R_ANAL_VAR_SCOPE_ARG|R_ANAL_VAR_DIR_IN, NULL, varname, 0);
-			} else {
-				varname = r_str_newf ("local_%x", -op.ptr);
-				r_anal_var_add (anal, fcn->addr, 1, -op.ptr, 'v', NULL, anal->bits/8, varname);
-				r_anal_var_access (anal, fcn->addr, 'v', 0, -op.ptr, 0, -op.addr); //, 'v', NULL, varname, 0);
-						//R_ANAL_VAR_SCOPE_LOCAL|R_ANAL_VAR_DIR_NONE, NULL, varname, 0);
-			}
-			free (varname);
-			break;
-		}
-		if (op.ptr && op.ptr != UT64_MAX && op.ptr != UT32_MAX) {
-			// swapped parameters wtf //
-			//if (!r_anal_fcn_xref_add (anal, fcn, op.ptr, op.addr, 'd')) {
-			if (!r_anal_fcn_xref_add (anal, fcn, op.addr, op.ptr, 'd')) {
-#if 0
-				r_anal_op_fini (&op);
-				FITFCNSZ ();
-				return R_ANAL_RET_ERROR;
-#endif
-			}
-		}
-		switch (op.type) {
-		case R_ANAL_OP_TYPE_NOP:
-			if ((addr + undelayed_idx-oplen) == fcn->addr) {
-				fcn->addr = bb->addr = addr + undelayed_idx;
-				continue;
-			}
-			break;
-		case R_ANAL_OP_TYPE_JMP:
-			if (op.dst->type == R_ANAL_VALUE_TYPE_IMM) {
-				if (!r_anal_fcn_xref_add (anal, fcn, op.addr, op.jump,
-						R_ANAL_REF_TYPE_CODE)) {
-#if 0
-					FITFCNSZ();
-					r_anal_op_fini (&op);
-					return R_ANAL_RET_ERROR;
-#endif
-				}
-				if (!overlapped) {
-					bb->jump = op.jump;
-					bb->fail = UT64_MAX;
-				}
-				// hardcoded jmp size // must be checked at the end wtf?
-				if (op.jump>fcn->addr && op.jump<(fcn->addr+fcn->size)) {
-					/* jump inside the same function */
-					FITFCNSZ();
-					return R_ANAL_RET_END;
-				} else {
-					if (op.jump < addr-512 && op.jump<addr) {
-						FITFCNSZ();
-						return R_ANAL_RET_END;
+		bb->size += oplen;
+		pos += oplen;
+
+		switch (op->type) {
+				case R_ANAL_OP_TYPE_CJMP:
+				if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {
+					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE))
+						break;
+					if (op->jump > addr) {
+						r_list_append (queue, op->jump);
 					}
-					if (op.jump > addr+512) {
-						FITFCNSZ();
-						return R_ANAL_RET_END;
+					if (op->fail > addr) {
+						r_list_append (queue, op->fail);
 					}
 				}
-			}
-			break;
-			//
-			//FITFCNSZ();
-			//return R_ANAL_RET_END;
-/// DO not follow jmps.. this is probably a bug ...
-#if 0
-			anal->iob.read_at (anal->iob.io, op.jump, bbuf, sizeof (bbuf));
-			FITFCNSZ();
-			return fcn_recurse (anal, fcn, op.jump, bbuf, sizeof (bbuf), depth-1);
-#endif
-		case R_ANAL_OP_TYPE_CJMP:
-			if (!r_anal_fcn_xref_add (anal, fcn, op.addr, op.jump,
-						  R_ANAL_REF_TYPE_CODE)) {
-				FITFCNSZ();
-/// XXX. fcn_xref_add returning false shouldnt result in fcn chop
-#if 0
-				r_anal_op_fini (&op);
-				eprintf ("ERR CJMP JAJAJWAT\n");
-				return R_ANAL_RET_ERROR;
-#endif
-			}
+				break;
 
-			if (!overlapped) {
-				bb->jump = op.jump;
-				bb->fail = op.fail;
-			}
-			anal->iob.read_at (anal->iob.io, op.jump, bbuf, sizeof (bbuf));
-			FITFCNSZ();
-			fcn_recurse (anal, fcn, op.jump, bbuf, sizeof (bbuf), depth-1);
-
-			// OK. What happens now, if the fail path is fully  _inside_ the jump path?
-			// How to avoid double counting the end address of the function?
-
-			anal->iob.read_at (anal->iob.io, op.fail, bbuf, sizeof (bbuf));
-			FITFCNSZ();
-			// TODO: Discuss bypassing this 'return' statement,
-			//       is this only necessary for branch delayed instructions?
-			ret = fcn_recurse (anal, fcn, op.fail, bbuf, sizeof (bbuf), depth-1);
-			if (1) { // XXX breaks mips analysis too !op.delay) {
-				// this will be all x86, arm (at least)
-				// without which the analysis is really slow,
-				// presumably because each opcode would get revisited
-				// (and already covered by a bb) many times
-				return ret;
-			}
-                        // For some reason, branch delayed code (MIPS) needs to continue
-#if 0
-		// do not add xrefs for cjmps?
-				r_anal_op_fini (&op);
-#endif
+			case R_ANAL_OP_TYPE_JMP:
+				if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {
+					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE))
+						break;
+					if (op->jump > addr) {
+						r_list_append (queue, op->jump);
+					}
+				}
+				break;
+		}
+		if (r_anal_op_break_flow (anal, op)) {
+			eprintf("break flow @ %x (from %x)\n", addr+pos-oplen, addr);
+			ret = R_ANAL_RET_END;
 			break;
-		case R_ANAL_OP_TYPE_CALL:
-			if (!r_anal_fcn_xref_add (anal, fcn, op.addr, op.jump,
-					op.type == R_ANAL_OP_TYPE_CALL?
-					R_ANAL_REF_TYPE_CALL : R_ANAL_REF_TYPE_CODE)) {
-				//fcn->size = bbsum (fcn);
-				FITFCNSZ ();
-#if 0
-				r_anal_op_fini (&op);
-				return R_ANAL_RET_ERROR;
-#endif
-			}
-			break;
-		//case R_ANAL_OP_TYPE_HLT:
-		case R_ANAL_OP_TYPE_TRAP:
-		case R_ANAL_OP_TYPE_UJMP:
-		case R_ANAL_OP_TYPE_RET:
-			VERBOSE_ANAL eprintf ("RET 0x%08"PFMT64x". %d %d %d\n", addr+undelayed_idx-oplen, overlapped, bb->size, fcn->size);
-			FITFCNSZ();
-			r_anal_op_fini (&op);
-			//fcn->size = bbsum (fcn);
-			return R_ANAL_RET_END;
 		}
 	}
-	r_anal_op_fini (&op);
-	FITFCNSZ ();
+	if (ret != R_ANAL_RET_ERROR)
+			r_list_append (fcn->bbs, bb);
+	r_anal_op_free (op);
 	return ret;
 }
 
 R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 len, int reftype) {
+	RList *queue;
+	ut8 bbuf[4096<<1];
+	int ret;
+
 	fcn->size = 0;
 	fcn->type = (reftype==R_ANAL_REF_TYPE_CODE)?
 			R_ANAL_FCN_TYPE_LOC: R_ANAL_FCN_TYPE_FCN;
@@ -443,9 +263,22 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 		if (anal->cur->custom_fn_anal) return result;
 	}
 
-	//if (len>16)
-	//	len -= 16; // XXX: hack to avoid buffer overflow by reading >64 bytes..
-	return fcn_recurse (anal, fcn, addr, buf, len, FCN_DEPTH);
+	queue = r_list_new ();
+	ret = anal_fun (anal, fcn, addr, buf, len, queue);
+
+	if (ret != R_ANAL_RET_ERROR) {
+		while (r_list_length (queue)) {
+			const ut64 addr = (ut64)r_list_pop (queue);
+			anal->iob.read_at (anal->iob.io, addr, bbuf, sizeof (bbuf));
+			ret = anal_fun (anal, fcn, addr, bbuf, sizeof (bbuf), queue);
+		}
+	}
+
+	r_list_free (queue);
+
+	fcn->size = bbsum (fcn);
+	eprintf("funsize %i (%x) ret %i\n", fcn->size, addr, ret);
+	return ret;
 }
 
 // TODO: need to implement r_anal_fcn_remove(RAnal *anal, RAnalFunction *fcn);
