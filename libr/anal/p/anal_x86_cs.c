@@ -24,9 +24,9 @@ static RAnalValue *convert_cs_to_r(RAnal *anal, csh handle, cs_x86_op *in) {
 			break;
 		case X86_OP_REG:
 			out->type = R_ANAL_VALUE_TYPE_REG;
-			out->reg = NULL; 
-				/*(in->reg == X86_REG_INVALID) ? NULL : */
-				/*r_reg_get (anal->reg, cs_reg_name(handle, in->reg), R_REG_TYPE_GPR);*/
+			out->reg = //NULL; 
+				(in->reg == X86_REG_INVALID) ? NULL : 
+				r_reg_get (anal->reg, cs_reg_name(handle, in->reg), R_REG_TYPE_GPR);
 			break;
 		case X86_OP_MEM:
 			out->type = R_ANAL_VALUE_TYPE_MEM;
@@ -195,12 +195,11 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 		case X86_INS_VMCALL:
 		case X86_INS_VMMCALL:
 			op->type = R_ANAL_OP_TYPE_TRAP;
-			op->imm = (int)INSOP(0).imm;
 			/* 32-bit linux syscalls */
-			if (op->imm == 0x80)
+			if ((int)INSOP(0).imm == 0x80)
 				op->type = R_ANAL_OP_TYPE_SWI;
 			if (a->decode)
-				esilprintf (op, "%d,$", op->imm);
+				esilprintf (op, "%d,$", (int)INSOP(0).imm);
 			break;
 		case X86_INS_SYSCALL:
 			op->type = R_ANAL_OP_TYPE_SWI;

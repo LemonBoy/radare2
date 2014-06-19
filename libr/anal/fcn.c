@@ -9,7 +9,6 @@
 #define EXISTS(x,y...) snprintf (key, sizeof(key)-1,x,##y),sdb_exists(DB,key)
 #define SETKEY(x,y...) snprintf (key, sizeof (key)-1, x,##y);
 
-#define VERBOSE_ANAL if(1)
 #define VERBOSE_DELAY if(0)
 
 R_API const char *r_anal_fcn_type_tostring(int type) {
@@ -153,25 +152,26 @@ int r_anal_op_break_flow (RAnal *anal, RAnalOp *op) {
 		case R_ANAL_OP_TYPE_RET:
 			return R_TRUE;
 		/* Handle every other operation done on the PC */
-		default:
-			if (pc_str && r_anal_op_write_reg (op, pc_str))
-				return R_TRUE;
+		/*default:*/
+			/*if (pc_str && r_anal_op_write_reg (op, pc_str))*/
+				/*return R_TRUE;*/
 	}
 	return R_FALSE;
 }
 
-#if 1
 static int bbsum(RAnalFunction *fcn) {
 	RListIter *iter;
 	RAnalBlock *bb;
 	int size = 0;
+	ut64 base = fcn->addr;
+	ut64 max = base;
 	r_list_foreach (fcn->bbs, iter, bb) {
-		eprintf("> From %08x To %08x\n", bb->addr, bb->addr+bb->size);
-		size += bb->size;
+		eprintf("> From %"PFMT64x" To %"PFMT64x"\n", bb->addr, bb->addr+bb->size);
+		if (bb->addr+bb->size > max)
+			max = bb->addr+bb->size;
 	}
-	return size;
+	return (max-base);
 }
-#endif
 
 int fcn_add_block (RAnalFunction *fcn, RAnalBlock *b)
 {
@@ -528,7 +528,7 @@ R_API int r_anal_fcn_split_bb(RAnalFunction *fcn, RAnalBlock *bb, ut64 addr) {
 			bbi->fail = -1;
 			bbi->conditional = R_FALSE;
 			if (bbi->type&R_ANAL_BB_TYPE_HEAD) {
-				bb->type = bbi->type^R_ANAL_BB_TYPE_HEAD;
+				bb->type = R_ANAL_BB_TYPE_HEAD;
 				bbi->type = R_ANAL_BB_TYPE_HEAD;
 			} else {
 				bb->type = bbi->type;
@@ -728,6 +728,7 @@ R_API int r_anal_str_to_fcn(RAnal *a, RAnalFunction *f, const char *sig) {
 }
 
 R_API RAnalFunction *r_anal_get_fcn_at(RAnal *anal, ut64 addr) {
+#warning DEPRECATED
 	RAnalFunction *fcni;
 	RListIter *iter;
 //eprintf ("DEPRECATED: get-at\n");
