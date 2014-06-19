@@ -344,13 +344,13 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 
 	    case MIPS_INS_B:
 		op->type = R_ANAL_OP_TYPE_JMP;
-		op->jump = addr + (INSOP(0).imm << 1);
+		op->jump = addr + (INSOP(0).imm << 0);
 		op->fail = addr+opsize;
 		op->delay = 1;
 		break;
 	    case MIPS_INS_J:
 		op->type = R_ANAL_OP_TYPE_JMP;
-		op->jump = (addr&0xf0000000) | (INSOP(0).imm << 1);
+		op->jump = (addr&0xf0000000) | (INSOP(0).imm << 0);
 		op->fail = addr+opsize;
 		op->delay = R_TRUE;
 		break;
@@ -374,7 +374,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 	    case MIPS_INS_BTNEZ:
 	    case MIPS_INS_BNEZ:
 		    op->type = R_ANAL_OP_TYPE_CJMP;
-		    op->jump = addr + (INSOP(1).imm << 1);
+		    op->jump = addr + (INSOP(1).imm << 0);
 		    op->fail = addr+opsize;
 		    op->delay = 1;
 		    break;
