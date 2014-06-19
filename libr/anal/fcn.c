@@ -252,21 +252,24 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RLi
 
 		switch (op->type) {
 			case R_ANAL_OP_TYPE_CCALL:
-				if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {
+				/*if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {*/
+				if (op->jump != UT64_MAX) {
 					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))
 						break;
 				}
 				break;
 
 			case R_ANAL_OP_TYPE_CALL:
-				if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {
+				/*if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {*/
+				if (op->jump != UT64_MAX) {
 					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))
 						break;
 				}
 				break;
 
 			case R_ANAL_OP_TYPE_CJMP:
-				if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {
+				/*if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {*/
+				if (op->jump != UT64_MAX) {
 					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE))
 						break;
 					if (op->jump > addr) {
@@ -279,7 +282,8 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RLi
 				break;
 
 			case R_ANAL_OP_TYPE_JMP:
-				if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {
+				/*if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {*/
+				if (op->jump != UT64_MAX) {
 					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))
 						break;
 				}

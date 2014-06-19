@@ -236,7 +236,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 				op->jump = INSOP(0).imm;
 			} else {
 				op->type = R_ANAL_OP_TYPE_UCALL;
-				op->jump = 0;
+				op->jump = UT64_MAX;
 			}
 			op->fail = addr+op->size;
 			break;
@@ -247,7 +247,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 				op->jump = INSOP(0).imm;
 			} else {
 				op->type = R_ANAL_OP_TYPE_UJMP;
-				op->jump = 0;
+				op->jump = UT64_MAX;
 			}
 			if (a->decode) {
 				ut64 dst = INSOP(0).imm;

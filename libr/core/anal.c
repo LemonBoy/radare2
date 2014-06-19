@@ -390,9 +390,9 @@ R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int dept
 	flag = r_flag_get_i2 (core->flags, at);
 
 	if (flag) {
-		fcn->name = r_str_newf ("@%s", flag->name);
+		fcn->name = r_str_newf ("%s", flag->name);
 	} else {
-		fcn->name = r_str_newf ("@%s.%08"PFMT64x,
+		fcn->name = r_str_newf ("%s.%08"PFMT64x,
 				fcn->type == R_ANAL_FCN_TYPE_LOC? "loc":
 				fcn->type == R_ANAL_FCN_TYPE_SYM? "sym":
 				fcn->type == R_ANAL_FCN_TYPE_IMP? "imp": "fcn", at);
