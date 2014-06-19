@@ -624,112 +624,88 @@ static void handle_print_show_cursor (RCore *core, RDisasmState *ds) {
 }
 
 static void handle_show_functions (RCore *core, RDisasmState *ds) {
-	if (ds->show_functions) {
-		RAnalFunction *f = r_anal_fcn_find (core->anal, ds->at, R_ANAL_FCN_TYPE_NULL);
-		//ds->pre = "  ";
-		if (f) {
-#warning TODO list from anal->sdb_fcns/fcn.0x%%x.locals|args
+	RAnalFunction *f;
 
-#if 0
-			if (f->locals != NULL) {
-				RAnalFcnLocal *f_loc;
-				RListIter *l_iter;
-				r_list_foreach (f->locals, l_iter, f_loc) {
-					if (f_loc && f_loc->addr == ds->at) {
-						handle_set_pre (ds, core->cons->vline[LINE_VERT]);
-						if (ds->show_color) {
-							r_cons_printf ("%s%s"Color_RESET, ds->color_fline, ds->pre); // "|"
-						} else {
-							ds->pre = r_str_concat (ds->pre, " ");
-							r_cons_printf (ds->pre); //"| "
-						}
-						if (ds->show_lines && ds->refline) {
-							if (ds->show_color) {
-								r_cons_printf ("%s%s"Color_RESET, ds->color_flow, ds->refline);
-							} else r_cons_strcat (ds->refline);
-						}
-						if (ds->show_offset)
-							r_cons_printf ("; -- ");
-						if (ds->show_color)
-							r_cons_printf ("%s %s"Color_RESET"\n",
-								ds->color_label, f_loc->name?f_loc->name:"unk");
-						else r_cons_printf (" %s\n", f_loc->name?f_loc->name:"unk");
-					}
-				}
+	if (!ds->show_functions)
+		return;
+	f = r_anal_fcn_find (core->anal, ds->at, R_ANAL_FCN_TYPE_NULL);
+	if (!f)
+		return;
+
+	/* Beginning of the function */
+	if (f->addr == ds->at) {
+		/* Local label */
+		if (f->type == R_ANAL_FCN_TYPE_LOC) {
+			if (ds->show_color) {
+				r_cons_printf ("%s%s ", ds->color_fline,
+					core->cons->vline[LINE_CROSS]); // |-
+				r_cons_printf ("%s%s"Color_RESET" %d\n",
+					ds->color_floc, f->name, f->size);
+				r_cons_printf ("%s%s "Color_RESET,
+					ds->color_fline, core->cons->vline[LINE_VERT]); // |
+			} else {
+				r_cons_printf ("%s %s %d\n%s ", core->cons->vline[LINE_CROSS],
+					f->name, f->size, core->cons->vline[LINE_VERT]); // |-
 			}
-#endif
-			if (f->addr == ds->at) {
-				char *sign = r_anal_fcn_to_string (core->anal, f);
-				if (f->type == R_ANAL_FCN_TYPE_LOC) {
-					if (ds->show_color) {
-						r_cons_printf ("%s%s ", ds->color_fline,
-							core->cons->vline[LINE_CROSS]); // |-
-						r_cons_printf ("%s%s"Color_RESET" %d\n",
-							ds->color_floc, f->name, f->size);
-						r_cons_printf ("%s%s "Color_RESET,
-							ds->color_fline, core->cons->vline[LINE_VERT]); // |
-					} else {
-						r_cons_printf ("%s %s %d\n%s ", core->cons->vline[LINE_CROSS],
-							f->name, f->size, core->cons->vline[LINE_VERT]); // |-
-					}
-				} else {
-					const char *fmt = ds->show_color?
-						"%s%s "Color_RESET"%s(%s) %s"Color_RESET" %d\n":
-						"%s (%s) %s %d\n%s ";
-					int corner = (f->size <= ds->analop.size)? RDWN_CORNER: LINE_VERT;
-					corner = LINE_VERT; // 99% of cases
+		} else {
+			const char *fmt = ds->show_color?
+				"%s%s "Color_RESET"%s(%s) %s"Color_RESET" %d\n":
+				"%s (%s) %s %d\n%s ";
+			int corner = (f->size <= ds->analop.size)? RDWN_CORNER: LINE_VERT;
+			corner = LINE_VERT; // 99% of cases
 #if SLOW_BUT_OK
-					RFlagItem *item = r_flag_get_i (core->flags, f->addr);
-					corner = item? LINE_VERT: RDWN_CORNER;
-					if (item)
-						corner = 0;
+			RFlagItem *item = r_flag_get_i (core->flags, f->addr);
+			corner = item? LINE_VERT: RDWN_CORNER;
+			if (item)
+				corner = 0;
 #endif
-					if (ds->show_color) {
-						r_cons_printf (fmt, ds->color_fline,
-							core->cons->vline[RUP_CORNER], ds->color_fname,
-							(f->type==R_ANAL_FCN_TYPE_FCN || f->type==R_ANAL_FCN_TYPE_SYM)?"fcn":
-							(f->type==R_ANAL_FCN_TYPE_IMP)?"imp":"loc",
-							f->name, f->size, corner);
-						r_cons_printf ("%s%s "Color_RESET,
-							ds->color_fline, core->cons->vline[corner]);
-					} else {
-						r_cons_printf (fmt, core->cons->vline[RUP_CORNER],
-							(f->type==R_ANAL_FCN_TYPE_FCN||f->type==R_ANAL_FCN_TYPE_SYM)?"fcn":
-							(f->type==R_ANAL_FCN_TYPE_IMP)?"imp":"loc",
-							f->name, f->size, core->cons->vline[corner]);
-					}
-				}
-				if (sign) r_cons_printf ("// %s\n", sign);
-				free (sign);
-				sign = NULL;
-				//ds->pre = "| "; // TOFIX!
-				handle_set_pre (ds, core->cons->vline[LINE_VERT]);
-				ds->pre = r_str_concat (ds->pre, " ");
-				ds->stackptr = 0;
-			} else if (f->addr+f->size-ds->analop.size== ds->at) {
-				if (ds->show_color) {
-					r_cons_printf ("%s%s "Color_RESET,
-						ds->color_fline, core->cons->vline[RDWN_CORNER]);
-				} else {
-					r_cons_printf ("%s ", core->cons->vline[RDWN_CORNER]);
-				}
-			} else if (ds->at > f->addr && ds->at < f->addr+f->size-1) {
-				if (ds->show_color) {
-					r_cons_printf ("%s%s "Color_RESET,
-						ds->color_fline, core->cons->vline[LINE_VERT]);
-				} else {
-					r_cons_printf ("%s ", core->cons->vline[LINE_VERT]);
-				}
-				//ds->pre = "| "; // TOFIX!
-				handle_set_pre (ds, core->cons->vline[LINE_VERT]);
-				ds->pre = r_str_concat (ds->pre, " ");
-			} else f = NULL;
-			if (f && ds->at == f->addr+f->size-ds->analop.size) { // HACK
-				//ds->pre = R_LINE_BOTTOM_DCORNER" ";
-				handle_set_pre (ds, core->cons->vline[RDWN_CORNER]);
-				ds->pre = r_str_concat (ds->pre, " ");
+			if (ds->show_color) {
+				r_cons_printf (fmt, ds->color_fline,
+					core->cons->vline[RUP_CORNER], ds->color_fname,
+					(f->type==R_ANAL_FCN_TYPE_FCN || f->type==R_ANAL_FCN_TYPE_SYM)?"fcn":
+					(f->type==R_ANAL_FCN_TYPE_IMP)?"imp":"loc",
+					f->name, f->size, corner);
+				r_cons_printf ("%s%s "Color_RESET,
+					ds->color_fline, core->cons->vline[corner]);
+			} else {
+				r_cons_printf (fmt, core->cons->vline[RUP_CORNER],
+					(f->type==R_ANAL_FCN_TYPE_FCN||f->type==R_ANAL_FCN_TYPE_SYM)?"fcn":
+					(f->type==R_ANAL_FCN_TYPE_IMP)?"imp":"loc",
+					f->name, f->size, core->cons->vline[corner]);
 			}
-		} else r_cons_printf ("  ");
+		}
+		/* Print the function signature */
+		char *sign = r_anal_fcn_to_string (core->anal, f);
+		if (sign) {
+			r_cons_printf ("// %s\n", sign);
+			free (sign);
+		}
+		//ds->pre = "| "; // TOFIX!
+		handle_set_pre (ds, core->cons->vline[LINE_VERT]);
+		ds->pre = r_str_concat (ds->pre, " ");
+		ds->stackptr = 0;
+	} else if (f->addr+f->size-ds->analop.size== ds->at) {
+		if (ds->show_color) {
+			r_cons_printf ("%s%s "Color_RESET,
+				ds->color_fline, core->cons->vline[RDWN_CORNER]);
+		} else {
+			r_cons_printf ("%s ", core->cons->vline[RDWN_CORNER]);
+		}
+	} else if (ds->at > f->addr && ds->at < f->addr+f->size-1) {
+		if (ds->show_color) {
+			r_cons_printf ("%s%s "Color_RESET,
+				ds->color_fline, core->cons->vline[LINE_VERT]);
+		} else {
+			r_cons_printf ("%s ", core->cons->vline[LINE_VERT]);
+		}
+		//ds->pre = "| "; // TOFIX!
+		handle_set_pre (ds, core->cons->vline[LINE_VERT]);
+		ds->pre = r_str_concat (ds->pre, " ");
+	} else f = NULL;
+	if (f && ds->at == f->addr+f->size-ds->analop.size) { // HACK
+		//ds->pre = R_LINE_BOTTOM_DCORNER" ";
+		handle_set_pre (ds, core->cons->vline[RDWN_CORNER]);
+		ds->pre = r_str_concat (ds->pre, " ");
 	}
 }
 
