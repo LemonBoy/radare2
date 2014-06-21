@@ -653,35 +653,6 @@ R_API int r_core_anal_fcn_list(RCore *core, const char *input, int rad) {
 	return R_TRUE;
 }
 
-static RList *recurse(RCore *core, RAnalBlock *from, RAnalBlock *dest);
-
-static RList *recurse_bb(RCore *core, ut64 addr, RAnalBlock *dest) {
-	RAnalBlock *bb;
-	RList *ret;
-	bb = r_anal_bb_from_offset (core->anal, addr);
-	if (bb == dest) {
-		eprintf ("path found!");
-		return NULL;
-	}
-	ret = recurse (core, bb, dest);
-	if (ret) return ret;
-	return NULL;
-}
-
-static void register_path (RList *l) {
-}
-
-static RList *recurse(RCore *core, RAnalBlock *from, RAnalBlock *dest) {
-	RList *ret = recurse_bb (core, from->jump, dest);
-	if (ret) register_path (ret);
-	ret = recurse_bb (core, from->fail, dest);
-	if (ret) register_path (ret);
-
-	/* same for all calls */
-	// TODO: RAnalBlock must contain a linked list of calls
-	return NULL;
-}
-
 R_API RList* r_core_anal_graph_to(RCore *core, ut64 addr, int n) {
 	RAnalBlock *bb, *root = NULL, *dest = NULL;
 	RListIter *iter, *iter2;

@@ -209,7 +209,7 @@ static RAnalValue *convert_cs_to_r(RAnal *anal, csh handle, cs_mips_op *in) {
 }
 
 static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
-	int n, ret, i, op->size = -1;
+	int n, ret, i;
 	csh handle;
 	cs_insn* insn;
 	int mode;

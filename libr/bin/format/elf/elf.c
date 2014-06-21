@@ -172,6 +172,7 @@ static int Elf_(r_bin_elf_init)(struct Elf_(r_bin_elf_obj_t) *bin) {
 
 	bin->baddr = Elf_(r_bin_elf_get_baddr) (bin);
 	bin->boffset = Elf_(r_bin_elf_get_boffset) (bin);
+	eprintf("%x %x\n", bin->baddr, bin->boffset);
 
 	return R_TRUE;
 }
