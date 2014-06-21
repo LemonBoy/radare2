@@ -72,7 +72,6 @@ R_API void r_anal_fcn_free(void *_fcn) {
 #if 0
 	// XXX: some shared basic blocks make it crash.
 	// TODO: fix it with sdb
-	r_list_free (fcn->bbs);
 	//r_list_free (fcn->locals);
 #endif
 	free (fcn->fingerprint);
@@ -167,7 +166,7 @@ static int bbsum(RAnalFunction *fcn) {
 	ut64 max = base;
 	r_list_foreach (fcn->bbs, iter, bb) {
 		eprintf("> From %"PFMT64x" To %"PFMT64x"\n", bb->addr, bb->addr+bb->size);
-#if 0
+#if 1
 		if (bb->addr+bb->size > max)
 			max = bb->addr+bb->size;
 	}
@@ -192,11 +191,13 @@ int fcn_add_block (RAnalFunction *fcn, RAnalBlock *b)
 
 	r_list_foreach (fcn->bbs, it, bb) {
 		if (b->addr == bb->addr + bb->size) {
+			/* Merge with the following bb */
 			merge_to = bb;
 			dir = 1;
 			break;
 		}
 		else if (b->addr + b->size == bb->addr) {
+			/* Merge with the preceding bb */
 			merge_to = bb;
 			dir = -1;
 			break;
@@ -208,8 +209,9 @@ int fcn_add_block (RAnalFunction *fcn, RAnalBlock *b)
 		return R_TRUE;
 	}
 
-	eprintf("| %s %x %x to %x %x\n", (dir < 0) ? "prepend" : "append", 
-			b->addr, b->size, merge_to->addr, merge_to->size);
+	eprintf("%s : %s %x %x to %x %x\n", __FUNCTION__,
+			(dir < 0) ? "prepend" : "append", b->addr, b->size, 
+			merge_to->addr, merge_to->size);
 
 	if (dir < 0)
 		merge_to->addr = b->addr;
@@ -218,7 +220,12 @@ int fcn_add_block (RAnalFunction *fcn, RAnalBlock *b)
 	return R_TRUE;
 }
 
-int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RList *queue) {
+typedef struct r_anal_fun_state_t {
+	RList *branch_queue;
+	RList *call_queue;
+} RAnalFunState;
+
+int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RAnalFunState *state) {
 	RAnalBlock *bb;
 	RAnalOp *op;
 	int pos;
@@ -247,7 +254,7 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RLi
 		}
 
 		if ((oplen = r_anal_op (anal, op, addr+pos, buf+pos, size-pos)) < 1) {
-			eprintf("op decode error\n");
+			eprintf("op decode error @ 0x%"PFMT64x"\n", addr+pos);
 			ret = R_ANAL_RET_ERROR;
 			break;
 		}
@@ -258,35 +265,36 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RLi
 		switch (op->type) {
 			case R_ANAL_OP_TYPE_CCALL:
 				if (op->jump != UT64_MAX) {
-					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))
-						break;
+					/*if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))*/
+						/*break;*/
+					r_list_append (state->call_queue, op->jump);
 				}
+				r_list_append (state->branch_queue, op->fail);
 				break;
 
 			case R_ANAL_OP_TYPE_CALL:
 				if (op->jump != UT64_MAX) {
-					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))
-						break;
+					/*if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))*/
+						/*break;*/
+					r_list_append (state->call_queue, op->jump);
 				}
 				break;
 
 			case R_ANAL_OP_TYPE_CJMP:
 				if (op->jump != UT64_MAX) {
-					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE))
-						break;
-					if (op->jump > addr) {
-						r_list_append (queue, op->jump);
-					}
-					if (op->fail > addr) {
-						r_list_append (queue, op->fail);
-					}
+					/*if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE))*/
+						/*break;*/
+					r_list_append (state->branch_queue, op->jump);
+					r_list_append (state->branch_queue, op->fail);
 				}
 				break;
 
 			case R_ANAL_OP_TYPE_JMP:
 				if (op->jump != UT64_MAX) {
-					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))
-						break;
+					/*if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE))*/
+						/*break;*/
+					r_list_append (state->branch_queue, op->jump);
+					// TODO:LEMON check if its inside another function
 				}
 				break;
 		}
@@ -303,7 +311,7 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RLi
 }
 
 R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 len, int reftype) {
-	RList *queue;
+	RAnalFunState state;
 	ut8 bbuf[4096];
 	int ret;
 
@@ -318,19 +326,21 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 		if (anal->cur->custom_fn_anal) return ret;
 	}
 
-	queue = r_list_new ();
-	ret = anal_fun (anal, fcn, addr, buf, len, queue);
+	state.branch_queue = r_list_new ();
+	state.call_queue = r_list_new ();
+	ret = anal_fun (anal, fcn, addr, buf, len, &state);
 
 	if (ret != R_ANAL_RET_ERROR) {
-		while (r_list_length (queue)) {
-			const ut64 addr = (ut64)r_list_pop (queue);
+		while (r_list_length (state.branch_queue)) {
+			const ut64 addr = (ut64)r_list_pop (state.branch_queue);
 			anal->iob.read_at (anal->iob.io, addr, bbuf, sizeof (bbuf));
-			ret = anal_fun (anal, fcn, addr, bbuf, sizeof (bbuf), queue);
+			ret = anal_fun (anal, fcn, addr, bbuf, sizeof (bbuf), &state);
 		}
 		ret = R_ANAL_RET_END;
 	}
 
-	r_list_free (queue);
+	r_list_free (state.branch_queue);
+	r_list_free (state.call_queue);
 
 	fcn->size = bbsum (fcn);
 	eprintf("funsize %x (%x) ret %i\n", fcn->size, addr, ret);
