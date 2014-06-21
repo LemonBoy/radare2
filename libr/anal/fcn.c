@@ -167,10 +167,15 @@ static int bbsum(RAnalFunction *fcn) {
 	ut64 max = base;
 	r_list_foreach (fcn->bbs, iter, bb) {
 		eprintf("> From %"PFMT64x" To %"PFMT64x"\n", bb->addr, bb->addr+bb->size);
+#if 0
 		if (bb->addr+bb->size > max)
 			max = bb->addr+bb->size;
 	}
 	return (max-base);
+#else
+	}
+	return 0;
+#endif
 }
 
 int fcn_add_block (RAnalFunction *fcn, RAnalBlock *b)
@@ -252,7 +257,6 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RLi
 
 		switch (op->type) {
 			case R_ANAL_OP_TYPE_CCALL:
-				/*if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {*/
 				if (op->jump != UT64_MAX) {
 					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))
 						break;
@@ -260,7 +264,6 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RLi
 				break;
 
 			case R_ANAL_OP_TYPE_CALL:
-				/*if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {*/
 				if (op->jump != UT64_MAX) {
 					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))
 						break;
@@ -268,7 +271,6 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RLi
 				break;
 
 			case R_ANAL_OP_TYPE_CJMP:
-				/*if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {*/
 				if (op->jump != UT64_MAX) {
 					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE))
 						break;
@@ -282,7 +284,6 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RLi
 				break;
 
 			case R_ANAL_OP_TYPE_JMP:
-				/*if (op->dst->type == R_ANAL_VALUE_TYPE_IMM) {*/
 				if (op->jump != UT64_MAX) {
 					if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))
 						break;
