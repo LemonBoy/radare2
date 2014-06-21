@@ -188,7 +188,7 @@ static RAnalValue *convert_cs_to_r(RAnal *anal, csh handle, cs_mips_op *in) {
 			break;
 		case MIPS_OP_REG:
 			out->type = R_ANAL_VALUE_TYPE_REG;
-			out->reg = //NULL; 
+			out->reg = 
 				(in->reg == MIPS_REG_INVALID) ? NULL : 
 				r_reg_get (anal->reg, cs_reg_name(handle, in->reg), R_REG_TYPE_GPR);
 			break;
@@ -209,22 +209,27 @@ static RAnalValue *convert_cs_to_r(RAnal *anal, csh handle, cs_mips_op *in) {
 }
 
 static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
-	int n, ret, i, opsize = -1;
+	int n, ret, i, op->size = -1;
 	csh handle;
 	cs_insn* insn;
-	int mode = a->big_endian? CS_MODE_BIG_ENDIAN: CS_MODE_LITTLE_ENDIAN;
-
+	int mode;
+	
+	mode |= a->big_endian? CS_MODE_BIG_ENDIAN: CS_MODE_LITTLE_ENDIAN;
 	mode |= (a->bits==64)? CS_MODE_64: CS_MODE_32;
-// XXX no arch->cpu ?!?! CS_MODE_MICRO, N64
-	ret = cs_open (CS_ARCH_MIPS, mode, &handle);
+	// XXX no arch->cpu ?!?! CS_MODE_MICRO, N64
+	if (cs_open (CS_ARCH_MIPS, mode, &handle) != CS_ERR_OK)
+		return 0;
+
 	op->delay = 0;
 	op->type = R_ANAL_OP_TYPE_ILL;
 	op->size = 4;
-	if (ret != CS_ERR_OK) goto fin;
+
 	cs_option (handle, CS_OPT_DETAIL, CS_OPT_ON);
-	n = cs_disasm_ex (handle, (ut8*)buf, len, addr, 1, &insn);
-	if (n<1 || insn->size<1)
-		goto beach;
+
+	if (cs_disasm_ex (handle, (ut8*)buf, len, addr, 1, &insn) != 1) {
+		cs_close (&handle);
+		return 0;
+	}
 
 	if (insn->detail->mips.op_count) {
 		op->dst = convert_cs_to_r (a, handle, &INSOP(0));
@@ -237,7 +242,6 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 	op->delay = 0;
 	op->size = insn->size;
 
-	opsize = op->size = insn->size;
 	switch (insn->id) {
 	    case MIPS_INS_INVALID:
 		    op->type = R_ANAL_OP_TYPE_ILL;
@@ -278,7 +282,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 		    op->type = R_ANAL_OP_TYPE_UCALL;
 		    op->delay = 1;
 		    op->jump = UT64_MAX;
-		    op->fail = addr+opsize;
+		    op->fail = addr+op->size;
 		    break;
 	    case MIPS_INS_JAL:
 	    case MIPS_INS_JALRC:
@@ -345,13 +349,13 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 	    case MIPS_INS_B:
 		op->type = R_ANAL_OP_TYPE_JMP;
 		op->jump = addr + (INSOP(0).imm << 0);
-		op->fail = addr+opsize;
+		op->fail = addr+op->size;
 		op->delay = 1;
 		break;
 	    case MIPS_INS_J:
 		op->type = R_ANAL_OP_TYPE_JMP;
 		op->jump = (addr&0xf0000000) | (INSOP(0).imm << 0);
-		op->fail = addr+opsize;
+		op->fail = addr+op->size;
 		op->delay = R_TRUE;
 		break;
 
@@ -375,7 +379,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 	    case MIPS_INS_BNEZ:
 		    op->type = R_ANAL_OP_TYPE_CJMP;
 		    op->jump = addr + (INSOP(1).imm << 0);
-		    op->fail = addr+opsize;
+		    op->fail = addr+op->size;
 		    op->delay = 1;
 		    break;
 	    case MIPS_INS_JR:
@@ -383,21 +387,15 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 		    op->type = R_ANAL_OP_TYPE_JMP;
 		    op->delay = 1;
 		    op->jump = UT64_MAX;
-		    op->fail = addr+opsize;
+		    op->fail = addr+op->size;
 		    // register 31 is $ra, so jmp is a return
 		    if (INSOP(0).reg == MIPS_REG_31)
 			op->type = R_ANAL_OP_TYPE_RET;
 		    break;
 	}
-	beach:
-	if (a->decode) {
-		if (!analop_esil (a, op, addr, buf, len, &handle, insn))
-			r_strbuf_fini (&op->esil);
-	}
 	cs_free (insn, n);
 	cs_close (&handle);
-	fin:
-	return opsize;
+	return op->size;
 }
 
 static int set_reg_profile(RAnal *anal) {
