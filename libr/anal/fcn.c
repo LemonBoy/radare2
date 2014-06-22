@@ -149,6 +149,7 @@ int r_anal_op_break_flow (RAnal *anal, RAnalOp *op) {
 		case R_ANAL_OP_TYPE_JMP:
 		case R_ANAL_OP_TYPE_CJMP:
 		case R_ANAL_OP_TYPE_RET:
+		case R_ANAL_OP_TYPE_TRAP:
 			return R_TRUE;
 		/* Handle every other operation done on the PC */
 		/*default:*/
@@ -337,6 +338,15 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 			ret = anal_fun (anal, fcn, addr, bbuf, sizeof (bbuf), &state);
 		}
 		ret = R_ANAL_RET_END;
+	}
+
+	ut64 call_addr;
+	RListIter *it;
+	r_list_foreach (state.call_queue, it, call_addr) {
+		if (!bbget (fcn, call_addr)) 
+			r_anal_fcn_xref_add (anal, fcn, -1, call_addr, R_ANAL_REF_TYPE_CALL);
+		else
+			r_anal_fcn_xref_add (anal, fcn, -1, call_addr, R_ANAL_REF_TYPE_CODE);
 	}
 
 	r_list_free (state.branch_queue);
