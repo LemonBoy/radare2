@@ -4,7 +4,6 @@
 #include <r_util.h>
 #include <r_list.h>
 
-#define FCN_DEPTH 32
 #define DB a->sdb_fcns
 #define EXISTS(x,y...) snprintf (key, sizeof(key)-1,x,##y),sdb_exists(DB,key)
 #define SETKEY(x,y...) snprintf (key, sizeof (key)-1, x,##y);
@@ -165,6 +164,7 @@ static int bbsum(RAnalFunction *fcn) {
 	int size = 0;
 	ut64 base = fcn->addr;
 	ut64 max = base;
+	eprintf("fun @ %"PFMT64x"\n", fcn->addr);
 	r_list_foreach (fcn->bbs, iter, bb) {
 		eprintf("> From %"PFMT64x" To %"PFMT64x"\n", bb->addr, bb->addr+bb->size);
 #if 1
@@ -176,9 +176,50 @@ static int bbsum(RAnalFunction *fcn) {
 	}
 	return 0;
 #endif
+} 
+
+static int bb_split (RAnalBlock *b1, const ut64 at, RAnalBlock *b2) {
+	if (b1->addr == at)
+		return R_FALSE;
+
+	b2->addr = b1->addr + at;
+	b2->size = b1->size - at;
+
+	b1->size = at;
+
+	return R_TRUE;
 }
 
-int fcn_add_block (RAnalFunction *fcn, RAnalBlock *b)
+static int fcn_split (RAnalFunction *from, RAnalFunction *to) {
+	RListIter *it;
+	RAnalBlock *bb;
+
+	if (from->addr == to->addr)
+		return R_FALSE;
+
+	r_list_foreach (from->bbs, it, bb) {
+		if (to->addr >= bb->addr && to->addr <= bb->addr + bb->size) {
+			eprintf("split block (%x:%x) because %x\n", bb->addr, bb->size, to->addr);
+			// SPLIT THE BLOCK
+			RAnalBlock *new = R_NEW0 (RAnalBlock);
+			bb_split (bb, to->addr - bb->addr, new);
+			r_list_append (to->bbs, new);
+		}
+		else if (bb->addr >= to->addr) {
+			eprintf("assign block (%x:%x) because %x\n", bb->addr, bb->size, to->addr);
+			r_list_append (to->bbs, bb);
+			r_list_split_iter (from->bbs, it);
+			free (it);
+		}
+	}
+
+	from->size = bbsum (from);
+	to->size = bbsum (to);
+
+	return R_TRUE;
+}
+
+static int fcn_add_block (RAnalFunction *fcn, RAnalBlock *b)
 {
 	RListIter *it;
 	RAnalBlock *bb, *merge_to;
@@ -210,9 +251,9 @@ int fcn_add_block (RAnalFunction *fcn, RAnalBlock *b)
 		return R_TRUE;
 	}
 
-	eprintf("%s : %s %x %x to %x %x\n", __FUNCTION__,
-			(dir < 0) ? "prepend" : "append", b->addr, b->size, 
-			merge_to->addr, merge_to->size);
+	/*eprintf("%s : %s %x %x to %x %x\n", __FUNCTION__,*/
+			/*(dir < 0) ? "prepend" : "append", b->addr, b->size, */
+			/*merge_to->addr, merge_to->size);*/
 
 	if (dir < 0)
 		merge_to->addr = b->addr;
@@ -296,11 +337,12 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RAn
 						/*break;*/
 					r_list_append (state->branch_queue, op->jump);
 					// TODO:LEMON check if its inside another function
+					/*r_list_append (state->branch_queue, op->fail);*/
 				}
 				break;
 		}
 		if (r_anal_op_break_flow (anal, op)) {
-			eprintf("break flow @ %x (from %x)\n", addr+pos-oplen, addr);
+			/*eprintf("break flow @ %x (from %x)\n", addr+pos-oplen, addr);*/
 			ret = R_ANAL_RET_END;
 			break;
 		}
@@ -319,6 +361,12 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 	fcn->addr = addr;
 	fcn->size = 0;
 	fcn->type = (reftype == R_ANAL_REF_TYPE_CODE) ? R_ANAL_FCN_TYPE_LOC: R_ANAL_FCN_TYPE_FCN;
+
+	RAnalFunction *ff = r_anal_fcn_find (anal, addr, -1);
+	if (ff && ff->addr != addr) {
+		fcn_split (ff, fcn);
+		return R_ANAL_RET_END;
+	}
 
 	if (fcn->addr == UT64_MAX) fcn->addr = addr;
 
@@ -353,7 +401,7 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 	r_list_free (state.call_queue);
 
 	fcn->size = bbsum (fcn);
-	eprintf("funsize %x (%x) ret %i\n", fcn->size, addr, ret);
+	/*eprintf("funsize %x (%x) ret %i\n", fcn->size, addr, ret);*/
 
 	return ret;
 }
