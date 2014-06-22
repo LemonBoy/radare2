@@ -1194,7 +1194,7 @@ static void handle_print_fcn_name (RCore * core, RDisasmState *ds) {
 	int have_local = 0;
 	switch (ds->analop.type) {
 		case R_ANAL_OP_TYPE_JMP:
-	        case R_ANAL_OP_TYPE_CJMP:
+		case R_ANAL_OP_TYPE_CJMP:
 		case R_ANAL_OP_TYPE_CALL:
 			cf = r_anal_fcn_find (core->anal, /* current function */
 				ds->at, R_ANAL_FCN_TYPE_NULL);
