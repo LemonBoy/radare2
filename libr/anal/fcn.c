@@ -179,12 +179,12 @@ static int bbsum(RAnalFunction *fcn) {
 } 
 
 static int bb_split (RAnalBlock *b1, const ut64 at, RAnalBlock *b2) {
-	if (b1->addr == at)
+	if (b1->addr == at || at >= b1->size)
 		return R_FALSE;
-
+	/* b2 is a piece of b1 */
 	b2->addr = b1->addr + at;
 	b2->size = b1->size - at;
-
+	/* Reduce b1 */
 	b1->size = at;
 
 	return R_TRUE;
@@ -200,7 +200,6 @@ static int fcn_split (RAnalFunction *from, RAnalFunction *to) {
 	r_list_foreach (from->bbs, it, bb) {
 		if (to->addr >= bb->addr && to->addr <= bb->addr + bb->size) {
 			eprintf("split block (%x:%x) because %x\n", bb->addr, bb->size, to->addr);
-			// SPLIT THE BLOCK
 			RAnalBlock *new = R_NEW0 (RAnalBlock);
 			bb_split (bb, to->addr - bb->addr, new);
 			r_list_append (to->bbs, new);
@@ -213,6 +212,7 @@ static int fcn_split (RAnalFunction *from, RAnalFunction *to) {
 		}
 	}
 
+	/* Update the sizes */
 	from->size = bbsum (from);
 	to->size = bbsum (to);
 
@@ -288,6 +288,11 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RAn
 
 	while (pos < size) {
 		// TODO:LEMON check if crosses the function boundaries
+		
+		if (r_anal_fcn_find (anal, addr+pos, -1)) {
+			ret = R_ANAL_RET_END;
+			break;
+		}
 
 		// Duplicated
 		if (bbget (fcn, addr+pos)) {
@@ -363,12 +368,13 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 	fcn->type = (reftype == R_ANAL_REF_TYPE_CODE) ? R_ANAL_FCN_TYPE_LOC: R_ANAL_FCN_TYPE_FCN;
 
 	RAnalFunction *ff = r_anal_fcn_find (anal, addr, -1);
-	if (ff && ff->addr != addr) {
-		fcn_split (ff, fcn);
-		return R_ANAL_RET_END;
+	if (ff) {
+		if (ff->addr != addr) {
+			fcn_split (ff, fcn);
+			return R_ANAL_RET_END;
+		}
+		return R_ANAL_RET_DUP;
 	}
-
-	if (fcn->addr == UT64_MAX) fcn->addr = addr;
 
 	if (anal->cur && anal->cur->fcn) {
 		ret = anal->cur->fcn(anal, fcn, addr, buf, len, reftype);
