@@ -130,8 +130,8 @@ static RAnalBlock *bbget(RAnalFunction *fcn, ut64 addr) {
 	RListIter *iter;
 	RAnalBlock *bb;
 	r_list_foreach (fcn->bbs, iter, bb) {
-		if (bb->addr == addr)
-			return bb;
+		/*if (bb->addr == addr)*/
+			/*return bb;*/
 		if (addr >= bb->addr && (addr < bb->addr+bb->size))
 			return bb;
 	}
@@ -165,7 +165,7 @@ static int bbsum(RAnalFunction *fcn) {
 	ut64 base = fcn->addr;
 	ut64 max = base;
 	r_list_foreach (fcn->bbs, iter, bb) {
-		eprintf("> From %"PFMT64x" To %"PFMT64x"\n", bb->addr, bb->addr+bb->size);
+		eprintf("> From %"PFMT64x" To %"PFMT64x" (%"PFMT64x",%"PFMT64x")\n", bb->addr, bb->addr+bb->size, bb->jump, bb->fail);
 #if 1
 		if (bb->addr+bb->size > max)
 			max = bb->addr+bb->size;
@@ -253,12 +253,17 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 
 	/* Quick test to check if we're analyzing some code that is "owned" by
 	 * another bb. In that case just split the block */
-	RAnalBlock *tst = bbget (fcn, addr);
-	if (tst && tst->addr != addr) {
-		RAnalBlock *new = R_NEW0 (RAnalBlock);
-		bb_split (tst, addr - tst->addr, new);
-		r_list_append (fcn->bbs, new);
-		return R_ANAL_RET_END;
+	RAnalBlock *this_bb = bbget (fcn, addr);
+	if (this_bb) {
+		ret = R_ANAL_RET_DUP;
+		/* Avoid zero-length blocks */
+		if (this_bb->addr != addr) {
+			RAnalBlock *new = R_NEW0 (RAnalBlock);
+			bb_split (this_bb, addr - tst->addr, this_bb);
+			r_list_append (fcn->bbs, new);
+			ret = R_ANAL_RET_END;
+		}
+		return ret;
 	}
 
 	while (pos < size) {
@@ -302,6 +307,8 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 
 						r_list_append (state->branch_queue, op->jump);
 						r_list_append (state->branch_queue, op->fail);
+
+						r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE);
 					}
 					bb->fail = op->fail;
 					break;
@@ -310,6 +317,8 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 					if (op->jump != UT64_MAX) {
 						bb->jump = op->jump;
 						r_list_append (state->branch_queue, op->jump);
+
+						r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE);
 					}
 					break;
 
@@ -362,7 +371,6 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 	if (ret != R_ANAL_RET_ERROR) {
 		while (r_list_length (state.branch_queue)) {
 			const ut64 addr = (ut64)r_list_pop (state.branch_queue);
-			r_anal_fcn_xref_add (anal, fcn, -1, addr, R_ANAL_REF_TYPE_CODE);
 			anal->iob.read_at (anal->iob.io, addr, bbuf, sizeof (bbuf));
 			ret = anal_fun (anal, fcn, addr, bbuf, sizeof (bbuf), R_ANAL_BB_TYPE_BODY, &state);
 		}
