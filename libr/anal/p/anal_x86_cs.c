@@ -24,19 +24,14 @@ static RAnalValue *convert_cs_to_r(RAnal *anal, csh handle, cs_x86_op *in) {
 			break;
 		case X86_OP_REG:
 			out->type = R_ANAL_VALUE_TYPE_REG;
-			out->reg = //NULL; 
-				(in->reg == X86_REG_INVALID) ? NULL : 
-				r_reg_get (anal->reg, cs_reg_name(handle, in->reg), R_REG_TYPE_GPR);
+			out->reg = r_reg_get (anal->reg, cs_reg_name(handle, in->reg), R_REG_TYPE_ALL);
 			break;
 		case X86_OP_MEM:
 			out->type = R_ANAL_VALUE_TYPE_MEM;
-			out->reg = //NULL;
-				(in->mem.base == X86_REG_INVALID) ? NULL : 
-				r_reg_get (anal->reg, cs_reg_name(handle, in->mem.base), R_REG_TYPE_GPR);
-			out->index = //NULL;
-				(in->mem.index == X86_REG_INVALID) ? NULL : 
-				r_reg_get (anal->reg, cs_reg_name(handle, in->mem.index), R_REG_TYPE_GPR);
+			out->reg = r_reg_get (anal->reg, cs_reg_name(handle, in->mem.base), R_REG_TYPE_GPR);
+			out->index = r_reg_get (anal->reg, cs_reg_name(handle, in->mem.index), R_REG_TYPE_GPR);
 			out->disp = in->mem.disp;
+			out->scale = in->mem.scale;
 			out->size = 4; // FIXME:LEMON
 			break;
 		case X86_OP_FP:
@@ -46,6 +41,9 @@ static RAnalValue *convert_cs_to_r(RAnal *anal, csh handle, cs_x86_op *in) {
 		default:
 			break;
 	}
+	/*char *tmp = r_anal_value_to_string (out);*/
+	/*eprintf("%s\n", tmp);*/
+	/*free (tmp);*/
 
 	return out;
 }
@@ -318,18 +316,62 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 }
 
 static int set_reg_profile(RAnal *anal) {
+	switch (anal->bits) {
+		case 16:
+		case 64:
+			return R_FALSE;
+		case 32:
+			return r_reg_set_profile_string (anal->reg,
+				"=pc	eip\n"
+				"=sp	esp\n"
+				"=bp	ebp\n"
+				"gpr	al	.8	0	0\n"
+				"gpr	ah	.8	1	0\n"
+				"gpr	bl	.8	4	0\n"
+				"gpr	bh	.8	5	0\n"
+				"gpr	cl	.8	8	0\n"
+				"gpr	ch	.8	9	0\n"
+				"gpr	dl	.8	12	0\n"
+				"gpr	dh	.8	13	0\n"
+
+				"gpr	ax	.16	0	0\n"
+				"gpr	bx	.16	4	0\n"
+				"gpr	cx	.16	8	0\n"
+				"gpr	dx	.16	12	0\n"
+				"gpr	si	.16	24	0\n"
+				"gpr	di	.16	28	0\n"
+
+				"gpr	eax	.32	0	0\n"
+				"gpr	ebx	.32	4	0\n"
+				"gpr	ecx	.32	8	0\n"
+				"gpr	edx	.32	12	0\n"
+				"gpr	ebp	.32	16	0\n"
+				"gpr	esp	.32	20	0\n"
+				"gpr	esi	.32	24	0\n"
+				"gpr	edi	.32	28	0\n"
+				"gpr	eip .32	32	0\n"
+
+				"seg	cs	.16 36	0\n"
+				"seg	ds	.16	38	0\n"
+				"seg	fs	.16	40	0\n"
+				"seg	es	.16	42	0\n"
+				"seg	ss	.16	44	0\n"
+				"seg	gs	.16	46	0\n"
+				);
+			break;
+	}
 	return R_TRUE;
 }
 
 
 RAnalPlugin r_anal_plugin_x86_cs = {
-	.name = "x86.cs",
+	.name = "x86",
 	.desc = "Capstone X86 analysis",
 	.license = "BSD",
 	.arch = R_SYS_ARCH_X86,
 	.bits = 16|32|64,
 	.op = &analop,
-	/*.set_reg_profile = &set_reg_profile,*/
+	.set_reg_profile = &set_reg_profile,
 };
 
 #ifndef CORELIB

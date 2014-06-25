@@ -581,16 +581,17 @@ enum {
 
 // mul*value+regbase+regidx+delta
 typedef struct r_anal_value_t {
-	int type : 8;
+	int type;
 
 	ut64 imm;
 	double fp;
 	RRegItem *reg;
 	RRegItem *index;
-	int shift : 8;
-	int shift_by_reg : 8;
+	RRegItem *shift_reg;
+	int shift;
 	st64 disp;
-	int size : 8;
+	int size;
+	int scale;
 } RAnalValue;
 
 typedef struct r_anal_op_t {

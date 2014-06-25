@@ -6,12 +6,59 @@
 #include <arm.h>
 #include "esil.h"
 
+#define INSOP(n) insn->detail->arm.operands[n]
+
 #define REG(x) cs_reg_name (*handle, insn->detail->arm.operands[x].reg)
 #define IMM(x) insn->detail->arm.operands[x].imm
 #define MEMBASE(x) cs_reg_name(*handle, insn->detail->arm.operands[x].mem.base)
 #define MEMINDEX(x) insn->detail->arm.operands[x].mem.index
 #define MEMDISP(x) insn->detail->arm.operands[x].mem.disp
 // TODO scale and disp
+
+static const char *cs_reg_name_ (csh handle, unsigned int reg_id) {
+	switch (reg_id) {
+		case ARM_REG_SB: return "r9";
+		case ARM_REG_SL: return "r10";
+		case ARM_REG_FP: return "r11";
+		case ARM_REG_IP: return "r12";
+	}
+	return cs_reg_name (handle, reg_id);
+}
+
+static RAnalValue *convert_cs_to_r(RAnal *anal, csh handle, cs_arm_op *in) {
+	RAnalValue *out = r_anal_value_new ();
+	switch (in->type) {
+		case ARM_OP_IMM:
+			out->type = R_ANAL_VALUE_TYPE_IMM;
+			out->imm = in->imm;
+			break;
+		case ARM_OP_REG:
+			out->type = R_ANAL_VALUE_TYPE_REG;
+			out->reg = r_reg_get (anal->reg, cs_reg_name_(handle, in->reg), R_REG_TYPE_ALL);
+			break;
+		case ARM_OP_MEM:
+			out->type = R_ANAL_VALUE_TYPE_MEM;
+			out->reg = r_reg_get (anal->reg, cs_reg_name_(handle, in->mem.base), R_REG_TYPE_GPR);
+			out->index = r_reg_get (anal->reg, cs_reg_name_(handle, in->mem.index), R_REG_TYPE_GPR);
+			out->disp = in->mem.disp;
+			out->scale = in->mem.scale;
+			out->size = 4; // FIXME:LEMON
+			break;
+		case ARM_OP_FP:
+			out->type = R_ANAL_VALUE_TYPE_FP;
+			out->fp = in->fp;
+			break;
+		default:
+			break;
+	}
+
+	/*char *tmp = r_anal_value_to_string (out);*/
+	/*eprintf("%s\n", tmp);*/
+	/*free (tmp);*/
+
+	return out;
+}
+
 
 static const char *arg(csh *handle, cs_insn *insn, char *buf, int n) {
 	switch (insn->detail->arm.operands[n].type) {
@@ -119,6 +166,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 	cs_open (CS_ARCH_ARM64, mode, &handle):
 	cs_open (CS_ARCH_ARM, mode, &handle);
 	cs_option (handle, CS_OPT_DETAIL, CS_OPT_ON);
+	op->addr = addr;
 	op->type = R_ANAL_OP_TYPE_NULL;
 	op->size = (a->bits==16)? 2: 4;
 	op->delay = 0;
@@ -128,8 +176,29 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 		if (n<1) {
 			op->type = R_ANAL_OP_TYPE_ILL;
 		} else {
+
+			if (insn->detail->arm.op_count) {
+				op->dst = convert_cs_to_r (a, handle, &INSOP(0));
+				for (i = 1; i < insn->detail->arm.op_count; i++)
+					op->src[i-1] = convert_cs_to_r (a, handle, &INSOP(i));
+			}
+
 			op->size = insn->size;
 			switch (insn->id) {
+			case ARM_INS_LDR:
+				op->type = R_ANAL_OP_TYPE_LOAD;
+
+				for (i = 0; i < insn->detail->arm.op_count; i++) {
+					if (insn->detail->arm.operands[i].type == ARM_OP_REG &&
+							insn->detail->arm.operands[i].reg == ARM_REG_PC) {
+						if (insn->detail->arm.cc == ARM_CC_AL)
+							op->type = R_ANAL_OP_TYPE_RET;
+						else
+							op->type = R_ANAL_OP_TYPE_CRET;
+						break;
+					}
+				}
+				break;
 			case ARM_INS_POP:
 			case ARM_INS_LDM:
 				op->type = R_ANAL_OP_TYPE_POP;
@@ -173,21 +242,25 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 			case ARM_INS_PUSH:
 			case ARM_INS_STR:
 				//case ARM_INS_POP:
-			case ARM_INS_LDR:
-				op->type = R_ANAL_OP_TYPE_LOAD;
-				break;
 			case ARM_INS_BL:
 			case ARM_INS_BLX:
 				op->type = R_ANAL_OP_TYPE_CALL;
 				op->jump = IMM(0);
+				if (insn->detail->arm.cc != ARM_CC_AL) {
+					op->type |= R_ANAL_OP_TYPE_COND;
+				}
 				break;
 			case ARM_INS_B:
 			case ARM_INS_BX:
 			case ARM_INS_BXJ:
 				op->type = R_ANAL_OP_TYPE_JMP;
 				op->jump = IMM(0);
+				if (insn->detail->arm.cc != ARM_CC_AL) {
+					op->type |= R_ANAL_OP_TYPE_COND;
+				}
 				break;
 			}
+			op->fail = addr+op->size;
 			if (a->decode) {
 				if (!analop_esil (a, op, addr, buf, len, &handle, insn))
 					r_strbuf_fini (&op->esil);
@@ -206,7 +279,7 @@ static int set_reg_profile(RAnal *anal) {
 	case 32:
 		return r_reg_set_profile_string (anal->reg,
 			"=pc	r15\n"
-		"=sp	r14\n" // XXX
+		"=sp	r13\n" // XXX
 		"=bp	r14\n" // XXX
 		"=a0	r0\n"
 		"=a1	r1\n"
@@ -214,6 +287,7 @@ static int set_reg_profile(RAnal *anal) {
 		"=a3	r3\n"
 		"gpr	lr	.32	56	0\n" // r14
 		"gpr	pc	.32	60	0\n" // r15
+		"gpr	sp	.32	52	0\n" // r13
 
 		"gpr	r0	.32	0	0\n"
 		"gpr	r1	.32	4	0\n"
