@@ -164,7 +164,6 @@ static int bbsum(RAnalFunction *fcn) {
 	int size = 0;
 	ut64 base = fcn->addr;
 	ut64 max = base;
-	eprintf("fun @ %"PFMT64x"\n", fcn->addr);
 	r_list_foreach (fcn->bbs, iter, bb) {
 		eprintf("> From %"PFMT64x" To %"PFMT64x"\n", bb->addr, bb->addr+bb->size);
 #if 1
@@ -178,14 +177,23 @@ static int bbsum(RAnalFunction *fcn) {
 #endif
 } 
 
+/* Split b1 at "at" into b2 */
 static int bb_split (RAnalBlock *b1, const ut64 at, RAnalBlock *b2) {
-	if (b1->addr == at || at >= b1->size)
+	if (!b1 || !b2 || at >= b1->size)
 		return R_FALSE;
+
 	/* b2 is a piece of b1 */
 	b2->addr = b1->addr + at;
 	b2->size = b1->size - at;
 	/* Reduce b1 */
 	b1->size = at;
+
+	/* Wire the block ends */
+	b2->jump = b1->jump;
+	b2->fail = b1->fail;
+
+	b1->jump = b2->addr;
+	b1->fail = UT64_MAX;
 
 	return R_TRUE;
 }
@@ -219,55 +227,12 @@ static int fcn_split (RAnalFunction *from, RAnalFunction *to) {
 	return R_TRUE;
 }
 
-static int fcn_add_block (RAnalFunction *fcn, RAnalBlock *b)
-{
-	RListIter *it;
-	RAnalBlock *bb, *merge_to;
-	int dir;
-
-	merge_to = NULL;
-	dir = 0;
-
-	if (!fcn || !b || !b->size)
-		return R_FALSE;
-
-	r_list_foreach (fcn->bbs, it, bb) {
-		if (b->addr == bb->addr + bb->size) {
-			/* Merge with the following bb */
-			merge_to = bb;
-			dir = 1;
-			break;
-		}
-		else if (b->addr + b->size == bb->addr) {
-			/* Merge with the preceding bb */
-			merge_to = bb;
-			dir = -1;
-			break;
-		}
-	}
-
-	if (!merge_to) {
-		r_list_append (fcn->bbs, b);
-		return R_TRUE;
-	}
-
-	/*eprintf("%s : %s %x %x to %x %x\n", __FUNCTION__,*/
-			/*(dir < 0) ? "prepend" : "append", b->addr, b->size, */
-			/*merge_to->addr, merge_to->size);*/
-
-	if (dir < 0)
-		merge_to->addr = b->addr;
-	merge_to->size += b->size;
-
-	return R_TRUE;
-}
-
 typedef struct r_anal_fun_state_t {
 	RList *branch_queue;
 	RList *call_queue;
 } RAnalFunState;
 
-int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RAnalFunState *state) {
+int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, const int type, RAnalFunState *state) {
 	RAnalBlock *bb;
 	RAnalOp *op;
 	int pos;
@@ -279,24 +244,27 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RAn
 	bb->size = 0;
 	bb->jump = UT64_MAX;
 	bb->fail = UT64_MAX;
-	bb->type = 0; // TODO
+	bb->type = type;
 
 	op = r_anal_op_new ();
 
 	ret = R_ANAL_RET_ERROR;
 	pos = 0;
 
-	while (pos < size) {
-		// TODO:LEMON check if crosses the function boundaries
-		
-		if (r_anal_fcn_find (anal, addr+pos, -1)) {
-			ret = R_ANAL_RET_END;
-			break;
-		}
+	/* Quick test to check if we're analyzing some code that is "owned" by
+	 * another bb. In that case just split the block */
+	RAnalBlock *tst = bbget (fcn, addr);
+	if (tst && tst->addr != addr) {
+		RAnalBlock *new = R_NEW0 (RAnalBlock);
+		bb_split (tst, addr - tst->addr, new);
+		r_list_append (fcn->bbs, new);
+		return R_ANAL_RET_END;
+	}
 
-		// Duplicated
-		if (bbget (fcn, addr+pos)) {
-			ret = R_ANAL_RET_DUP;
+	while (pos < size) {
+		if (r_anal_fcn_find (anal, addr+pos, -1) || bbget (fcn, addr+pos)) {
+			bb->fail = addr+pos;
+			ret = R_ANAL_RET_END;
 			break;
 		}
 
@@ -312,48 +280,52 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, RAn
 		switch (op->type) {
 			case R_ANAL_OP_TYPE_CCALL:
 				if (op->jump != UT64_MAX) {
-					/*if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))*/
-						/*break;*/
 					r_list_append (state->call_queue, op->jump);
 				}
+				bb->fail = op->fail;
 				r_list_append (state->branch_queue, op->fail);
 				break;
 
 			case R_ANAL_OP_TYPE_CALL:
 				if (op->jump != UT64_MAX) {
-					/*if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL))*/
-						/*break;*/
 					r_list_append (state->call_queue, op->jump);
 				}
 				break;
-
-			case R_ANAL_OP_TYPE_CJMP:
-				if (op->jump != UT64_MAX) {
-					/*if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE))*/
-						/*break;*/
-					r_list_append (state->branch_queue, op->jump);
-					r_list_append (state->branch_queue, op->fail);
-				}
-				break;
-
-			case R_ANAL_OP_TYPE_JMP:
-				if (op->jump != UT64_MAX) {
-					/*if (!r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CODE))*/
-						/*break;*/
-					r_list_append (state->branch_queue, op->jump);
-					// TODO:LEMON check if its inside another function
-					/*r_list_append (state->branch_queue, op->fail);*/
-				}
-				break;
 		}
+
+		/* The block type is decided by the last flow-breaking opcode */
 		if (r_anal_op_break_flow (anal, op)) {
+			switch (op->type) {
+				case R_ANAL_OP_TYPE_CJMP:
+					if (op->jump != UT64_MAX) {
+						bb->jump = op->jump;
+
+						r_list_append (state->branch_queue, op->jump);
+						r_list_append (state->branch_queue, op->fail);
+					}
+					bb->fail = op->fail;
+					break;
+
+				case R_ANAL_OP_TYPE_JMP:
+					if (op->jump != UT64_MAX) {
+						bb->jump = op->jump;
+						r_list_append (state->branch_queue, op->jump);
+					}
+					break;
+
+				default:
+					bb->type = R_ANAL_BB_TYPE_FOOT;
+					break;
+			}
 			/*eprintf("break flow @ %x (from %x)\n", addr+pos-oplen, addr);*/
 			ret = R_ANAL_RET_END;
 			break;
 		}
 	}
+
 	if (ret != R_ANAL_RET_ERROR)
-		fcn_add_block (fcn, bb);
+		r_list_append (fcn->bbs, bb);
+
 	r_anal_op_free (op);
 	return ret;
 }
@@ -368,7 +340,9 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 	fcn->type = (reftype == R_ANAL_REF_TYPE_CODE) ? R_ANAL_FCN_TYPE_LOC: R_ANAL_FCN_TYPE_FCN;
 
 	RAnalFunction *ff = r_anal_fcn_find (anal, addr, -1);
+	/* There's already a function at this address */
 	if (ff) {
+		/* Split the function if its not exactly the same function */
 		if (ff->addr != addr) {
 			fcn_split (ff, fcn);
 			return R_ANAL_RET_END;
@@ -383,24 +357,34 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 
 	state.branch_queue = r_list_new ();
 	state.call_queue = r_list_new ();
-	ret = anal_fun (anal, fcn, addr, buf, len, &state);
+	ret = anal_fun (anal, fcn, addr, buf, len, R_ANAL_BB_TYPE_HEAD, &state);
 
 	if (ret != R_ANAL_RET_ERROR) {
 		while (r_list_length (state.branch_queue)) {
 			const ut64 addr = (ut64)r_list_pop (state.branch_queue);
+			r_anal_fcn_xref_add (anal, fcn, -1, addr, R_ANAL_REF_TYPE_CODE);
 			anal->iob.read_at (anal->iob.io, addr, bbuf, sizeof (bbuf));
-			ret = anal_fun (anal, fcn, addr, bbuf, sizeof (bbuf), &state);
+			ret = anal_fun (anal, fcn, addr, bbuf, sizeof (bbuf), R_ANAL_BB_TYPE_BODY, &state);
 		}
 		ret = R_ANAL_RET_END;
 	}
 
 	ut64 call_addr;
 	RListIter *it;
+	RAnalBlock *block;
 	r_list_foreach (state.call_queue, it, call_addr) {
-		if (!bbget (fcn, call_addr)) 
+		block = bbget (fcn, call_addr);
+		if (block) {
+			eprintf("call to %"PFMT64x" is inside a block (delta %"PFMT64x")\n", 
+					call_addr, call_addr - block->addr);
+			if (call_addr - block->addr > 0) {
+				RAnalBlock *new = R_NEW0 (RAnalBlock);
+				bb_split (block, call_addr - block->addr, new);
+				r_list_append (fcn->bbs, new);
+				r_anal_fcn_xref_add (anal, fcn, -1, call_addr, R_ANAL_REF_TYPE_CODE);
+			}
+		} else
 			r_anal_fcn_xref_add (anal, fcn, -1, call_addr, R_ANAL_REF_TYPE_CALL);
-		else
-			r_anal_fcn_xref_add (anal, fcn, -1, call_addr, R_ANAL_REF_TYPE_CODE);
 	}
 
 	r_list_free (state.branch_queue);
