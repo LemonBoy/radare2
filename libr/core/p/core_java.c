@@ -7,20 +7,15 @@
 #include <r_cons.h>
 #include <string.h>
 #include <r_anal.h>
+#include <r_anal_ex.h>
 
-#undef R_API
-#define R_API static inline
-#undef R_IPI
-#define R_IPI static
-
+#if 0
 #include "../../../shlr/java/ops.c"
 #include "../../../shlr/java/code.c"
 #include "../../../shlr/java/class.c"
-//#include "../../../shlr/java/class.h"
-#undef R_API
-#define R_API
-#undef R_IPI
-#define R_IPI
+#endif
+#include "../../../shlr/java/class.h"
+#include "../../../shlr/java/code.h"
 
 #define DO_THE_DBG 0
 #undef IFDBG

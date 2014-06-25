@@ -8,6 +8,11 @@ CFLAGS+=-DCORELIB -Iarch -I$(TOP)/shlr
 
 LDFLAGS+=${BN_LIBS}
 
+include p/capstone.mk
+LDFLAGS+=$(CS_LDFLAGS)
+LDFLAGS+=$(SHLR)/java/libr_java.a
+
+
 .PHONY: all plugins libs ${EXTRA_CLEAN}
 
 all: plugins

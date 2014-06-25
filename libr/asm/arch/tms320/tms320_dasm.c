@@ -611,19 +611,25 @@ void decode_braces(tms320_dasm_t * dasm)
 	}
 
 	if (field_valid(dasm, uu)) {
-		// first
-		replace(dasm->syntax, "[uns(]", "%s", field_value(dasm, uu) & 1 ? "uns(" : "");
-		replace(dasm->syntax, "[)]", "%s", field_value(dasm, uu) & 1 ? ")" : "");
+		boolt parallel = strstr(dasm->syntax, "::");
 
+		// first
 		replace(dasm->syntax, "[uns(]", "%s", field_value(dasm, uu) & 2 ? "uns(" : "");
 		replace(dasm->syntax, "[)]", "%s", field_value(dasm, uu) & 2 ? ")" : "");
+
+		if (parallel) {
+			replace(dasm->syntax, "[uns(]", "%s", field_value(dasm, uu) & 2 ? "uns(" : "");
+			replace(dasm->syntax, "[)]", "%s", field_value(dasm, uu) & 2 ? ")" : "");
+		}
 
 		// second
 		replace(dasm->syntax, "[uns(]", "%s", field_value(dasm, uu) & 1 ? "uns(" : "");
 		replace(dasm->syntax, "[)]", "%s", field_value(dasm, uu) & 1 ? ")" : "");
 
-		replace(dasm->syntax, "[uns(]", "%s", field_value(dasm, uu) & 2 ? "uns(" : "");
-		replace(dasm->syntax, "[)]", "%s", field_value(dasm, uu) & 2 ? ")" : "");
+		if (parallel) {
+			replace(dasm->syntax, "[uns(]", "%s", field_value(dasm, uu) & 1 ? "uns(" : "");
+			replace(dasm->syntax, "[)]", "%s", field_value(dasm, uu) & 1 ? ")" : "");
+		}
 	}
 
 	// remove rudiments
@@ -725,6 +731,8 @@ void decode_cond(tms320_dasm_t * dasm)
 
 	if (field_valid(dasm, CCCCCCC))
 		substitute(dasm->syntax, "cond", "%s", get_cond_str(field_value(dasm, CCCCCCC), tmp));
+
+	substitute(dasm->syntax, "[label, ]", "");
 }
 
 void decode_registers(tms320_dasm_t * dasm)

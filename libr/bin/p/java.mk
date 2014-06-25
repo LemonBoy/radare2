@@ -1,9 +1,5 @@
 OBJ_JAVA=bin_java.o 
-#../format/java/java.o
-#SHARED_JAVA=../../shlr/java/class.o
-#SHARED_JAVA+=../../shlr/java/code.o
-#SHARED_JAVA+=../../shlr/java/ops.o
-#CFLAGS+= -Wno-unused-function
+
 SHARED2_JAVA=$(addprefix ../,${SHARED_JAVA})
 
 STATIC_OBJ+=${OBJ_JAVA}
@@ -18,4 +14,6 @@ ALL_TARGETS+=${TARGET_JAVA}
 
 ${TARGET_JAVA}: ${OBJ_JAVA}
 	${CC} $(call libname,bin_java) ${CFLAGS} ${OBJ_JAVA} \
-		$(LDFLAGS) ${SHARED2_JAVA} ${SHLR}/sdb/src/libsdb.a
+		$(LDFLAGS) ${SHARED2_JAVA} \
+		${SHLR}/java/libr_java.a \
+		${SHLR}/sdb/src/libsdb.a

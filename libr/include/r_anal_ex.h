@@ -3,6 +3,8 @@
 
 #ifndef R2_ANAL_EX_H
 #define R2_ANAL_EX_H
+#undef R_API
+#define R_API
 
 enum {
 	R_ANAL_EX_FMT_EXEC,
@@ -460,5 +462,3 @@ R_API int r_anal_ex_bb_address_comparator(RAnalBlock *a, RAnalBlock *b);
 #define R_ANAL_EX_LDST_STORE_PUT_FIELD_STR "load from_ref to_stack ref"
 
 #endif
-
-

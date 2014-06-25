@@ -10,19 +10,13 @@
 #include <r_anal_ex.h>
 #include <r_cons.h>
 
-#undef R_API
-#define R_API static inline
-#undef R_IPI
-#define R_IPI static
-
+#include "../../../shlr/java/code.h"
+#include "../../../shlr/java/class.h"
+#if 0
 #include "../../../shlr/java/ops.c"
 #include "../../../shlr/java/code.c"
 #include "../../../shlr/java/class.c"
-//#include "../../../shlr/java/ssa_java.h"
-#undef R_API
-#define R_API
-#undef R_IPI
-#define R_IPI
+#endif
 
 #ifdef IFDBG
 #undef IFDBG
@@ -599,18 +593,20 @@ static int analyze_from_code_attr (RAnal *anal, RAnalFunction *fcn, RBinJavaFiel
 
 static int analyze_method(RAnal *anal, RAnalFunction *fcn, RAnalState *state) {
 	ut64 bytes_consumed = 0;
-	RList *bbs = NULL;
 	// deallocate niceties
 	r_list_free (fcn->bbs);
 	fcn->bbs = r_anal_bb_list_new ();
 
-	IFDBG eprintf ("analyze_method: Parsing fcn %s @ 0x%08"PFMT64x", %d bytes\n", fcn->name, fcn->addr, fcn->size);
+	IFDBG eprintf ("analyze_method: Parsing fcn %s @ 0x%08"PFMT64x", %d bytes\n",
+		fcn->name, fcn->addr, fcn->size);
 	java_new_method (fcn->addr);
 	state->current_fcn = fcn;
 	// Not a resource leak.  Basic blocks should be stored in the state->fcn
-	bbs = r_anal_ex_perform_analysis (anal, state, fcn->addr);
+	// TODO: ? RList *bbs = 
+	r_anal_ex_perform_analysis (anal, state, fcn->addr);
 	bytes_consumed = state->bytes_consumed;
-	IFDBG eprintf ("analyze_method: Completed Parsing fcn %s @ 0x%08"PFMT64x", consumed %"PFMT64d" bytes\n", fcn->name, fcn->addr, bytes_consumed);
+	IFDBG eprintf ("analyze_method: Completed Parsing fcn %s @ 0x%08"PFMT64x
+		", consumed %"PFMT64d" bytes\n", fcn->name, fcn->addr, bytes_consumed);
 
 	return state->anal_ret_val;
 }

@@ -92,8 +92,8 @@ static int assemble(RAsm *a, RAsmOp *op, const char *str) {
 	return ret;
 }
 
-RAsmPlugin r_asm_plugin_mips = {
-	.name = "mips",
+RAsmPlugin r_asm_plugin_mips_gnu = {
+	.name = "mips.gnu",
 	.arch = "mips",
 	.license = "GPL3",
 	.bits = 32|64,
@@ -107,6 +107,6 @@ RAsmPlugin r_asm_plugin_mips = {
 #ifndef CORELIB
 struct r_lib_struct_t radare_plugin = {
 	.type = R_LIB_TYPE_ASM,
-	.data = &r_asm_plugin_mips
+	.data = &r_asm_plugin_mips_gnu
 };
 #endif

@@ -4,7 +4,6 @@
 #include <r_lib.h>
 #include <capstone.h>
 #include <arm.h>
-
 #include "esil.h"
 
 #define REG(x) cs_reg_name (*handle, insn->detail->arm.operands[x].reg)
@@ -14,7 +13,7 @@
 #define MEMDISP(x) insn->detail->arm.operands[x].mem.disp
 // TODO scale and disp
 
-const char *arg(csh *handle, cs_insn *insn, char *buf, int n) {
+static const char *arg(csh *handle, cs_insn *insn, char *buf, int n) {
 	switch (insn->detail->arm.operands[n].type) {
 	case ARM_OP_REG:
 		sprintf (buf, "%s",
@@ -103,6 +102,7 @@ static int analop_esil(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len
 	case ARM_INS_LDR:
 		r_strbuf_appendf (&op->esil, "%s,%d,+,[4],%s,=",
 			MEMBASE(1), MEMDISP(1), REG(0));
+		break;
 	case ARM_INS_LDRB:
 		r_strbuf_appendf (&op->esil, "%s,%d,+,[1],%s,=",
 			MEMBASE(1), MEMDISP(1), REG(0));
@@ -153,6 +153,7 @@ static int analop(RAnal *a, RAnalOp *op, ut64 addr, const ut8 *buf, int len) {
 			case ARM_INS_VQMOVN:
 				op->type = R_ANAL_OP_TYPE_MOV;
 				break;
+			case ARM_INS_CMP:
 			case ARM_INS_TST:
 				op->type = R_ANAL_OP_TYPE_CMP;
 				break;
@@ -281,10 +282,11 @@ static int set_reg_profile(RAnal *anal) {
 		);
 		break;
 	}
+	return 0;
 }
 
 RAnalPlugin r_anal_plugin_arm_cs = {
-	.name = "arm.cs",
+	.name = "arm",
 	.desc = "Capstone ARM analyzer",
 	.license = "BSD",
 	.arch = R_SYS_ARCH_ARM,

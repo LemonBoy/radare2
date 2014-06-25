@@ -8,8 +8,8 @@
 #include <r_lib.h>
 #include <r_asm.h>
 #include "dis-asm.h"
-#include "../arch/arm/arm.h"
-#include "../arch/arm/gnu/arm.h"
+#include "../arch/arm/asm-arm.h"
+#include "../arch/arm/gnu/gnu-arm.h"
 
 #if 0
 #define ARM_ARCH_OPT(N, V, DF) { N, sizeof (N) - 1, V, DF }
@@ -193,8 +193,8 @@ static int assemble(RAsm *a, RAsmOp *op, const char *buf) {
 	return opsize;
 }
 
-RAsmPlugin r_asm_plugin_arm = {
-	.name = "arm",
+RAsmPlugin r_asm_plugin_arm_gnu = {
+	.name = "arm.gnu",
 	.arch = "arm",
 	.bits = 16|32|64,
 	.desc = "Acorn RISC Machine CPU",
@@ -208,6 +208,6 @@ RAsmPlugin r_asm_plugin_arm = {
 #ifndef CORELIB
 struct r_lib_struct_t radare_plugin = {
 	.type = R_LIB_TYPE_ASM,
-	.data = &r_asm_plugin_arm
+	.data = &r_asm_plugin_arm_gnu
 };
 #endif

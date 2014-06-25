@@ -181,8 +181,8 @@ static int bin_strings (RCore *r, int mode, ut64 baddr, int va) {
 					string->string, size, va?baddr+string->vaddr:string->paddr,
 					string->size, va?baddr+string->vaddr:string->paddr);
 			} else r_cons_printf ("addr=0x%08"PFMT64x" off=0x%08"PFMT64x
-				" ordinal=%03"PFMT64d" "
-				"sz=%d len=%d section=%s type=%c string=%s\n",
+				" ordinal=%03u "
+				"sz=%u len=%u section=%s type=%c string=%s\n",
 				baddr+string->vaddr, string->paddr,
 				string->ordinal, string->size, string->length,
 				section?section->name:"unknown",
@@ -690,10 +690,10 @@ static int bin_imports (RCore *r, int mode, ut64 baddr, int va, const char *name
 				r_cons_printf ("f imp.%s @ 0x%08"PFMT64x"\n",
 						import->name, va?baddr+import->vaddr:import->paddr);*/
 			} else if (import->classname[0] != 0) {
-				r_cons_printf ("ordinal=%03"PFMT64d" plt=0x%08"PFMT64x" bind=%s type=%s classname=%s name=%s descriptor=%s\n",
+				r_cons_printf ("ordinal=%03d plt=0x%08"PFMT64x" bind=%s type=%s classname=%s name=%s descriptor=%s\n",
 					import->ordinal, addr,
 					import->bind, import->type, import->classname, import->name, import->descriptor);
-			} else r_cons_printf ("ordinal=%03"PFMT64d" plt=0x%08"PFMT64x" bind=%s type=%s name=%s\n",
+			} else r_cons_printf ("ordinal=%03d plt=0x%08"PFMT64x" bind=%s type=%s name=%s\n",
 					import->ordinal, addr,
 					import->bind, import->type, import->name);
 			i++;
@@ -832,14 +832,14 @@ static int bin_symbols (RCore *r, int mode, ut64 baddr, int va, ut64 at, const c
 								symbol->name, symbol->size);
 					}
 #endif
-					r_cons_printf ("f sym.%s %"PFMT64d" 0x%08"PFMT64x"\n",
-							symbol->name, (ut64)symbol->size, (ut64)addr);
-				} else r_cons_printf ("addr=0x%08"PFMT64x" off=0x%08"PFMT64x" ord=%03"PFMT64d" "
-						"fwd=%s sz=%"PFMT64d" bind=%s type=%s name=%s\n",
-						addr, symbol->paddr,
-						symbol->ordinal, symbol->forwarder,
-						symbol->size, symbol->bind, symbol->type,
-						symbol->name);
+					r_cons_printf ("f sym.%s %u 0x%08"PFMT64x"\n",
+							symbol->name, symbol->size, addr);
+				} else r_cons_printf ("addr=0x%08"PFMT64x" off=0x%08"PFMT64x" ord=%03u "
+						    "fwd=%s sz=%u bind=%s type=%s name=%s\n",
+						    addr, symbol->paddr,
+						    symbol->ordinal, symbol->forwarder,
+						    symbol->size, symbol->bind, symbol->type,
+						    symbol->name);
 			}
 			i++;
 		}
