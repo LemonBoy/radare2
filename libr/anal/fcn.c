@@ -126,9 +126,13 @@ R_API int r_anal_fcn_xref_del (RAnal *a, RAnalFunction *fcn, ut64 at, ut64 addr,
 	return R_FALSE;
 }
 
-static RAnalBlock *bbget(RAnalFunction *fcn, ut64 addr) {
+R_API RAnalBlock *r_anal_fcn_bbget (RAnalFunction *fcn, ut64 addr) {
 	RListIter *iter;
 	RAnalBlock *bb;
+
+	if (!fcn)
+		return NULL;
+
 	r_list_foreach (fcn->bbs, iter, bb) {
 		/*if (bb->addr == addr)*/
 			/*return bb;*/
@@ -156,6 +160,11 @@ int r_anal_op_break_flow (RAnal *anal, RAnalOp *op) {
 				/*return R_TRUE;*/
 	}
 	return R_FALSE;
+}
+
+static int cmp_bb (const void *a, const void *b) {
+	RAnalBlock *b1 = a, *b2 = b;
+	return (b1->addr > b2->addr);
 }
 
 static int bbsum(RAnalFunction *fcn) {
@@ -210,11 +219,11 @@ static int fcn_split (RAnalFunction *from, RAnalFunction *to) {
 			eprintf("split block (%x:%x) because %x\n", bb->addr, bb->size, to->addr);
 			RAnalBlock *new = R_NEW0 (RAnalBlock);
 			bb_split (bb, to->addr - bb->addr, new);
-			r_list_append (to->bbs, new);
+			r_list_add_sorted (to->bbs, new, cmp_bb);
 		}
 		else if (bb->addr >= to->addr) {
 			eprintf("assign block (%x:%x) because %x\n", bb->addr, bb->size, to->addr);
-			r_list_append (to->bbs, bb);
+			r_list_add_sorted (to->bbs, bb, cmp_bb);
 			r_list_split_iter (from->bbs, it);
 			free (it);
 		}
@@ -253,21 +262,21 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 
 	/* Quick test to check if we're analyzing some code that is "owned" by
 	 * another bb. In that case just split the block */
-	RAnalBlock *this_bb = bbget (fcn, addr);
+	RAnalBlock *this_bb = r_anal_fcn_bbget (fcn, addr);
 	if (this_bb) {
 		ret = R_ANAL_RET_DUP;
 		/* Avoid zero-length blocks */
 		if (this_bb->addr != addr) {
 			RAnalBlock *new = R_NEW0 (RAnalBlock);
-			bb_split (this_bb, addr - tst->addr, this_bb);
-			r_list_append (fcn->bbs, new);
+			bb_split (this_bb, addr - this_bb->addr, new);
+			r_list_add_sorted (fcn->bbs, new, cmp_bb);
 			ret = R_ANAL_RET_END;
 		}
 		return ret;
 	}
 
 	while (pos < size) {
-		if (r_anal_fcn_find (anal, addr+pos, -1) || bbget (fcn, addr+pos)) {
+		if (r_anal_fcn_find (anal, addr+pos, -1) || r_anal_fcn_bbget (fcn, addr+pos)) {
 			bb->fail = addr+pos;
 			ret = R_ANAL_RET_END;
 			break;
@@ -333,7 +342,7 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 	}
 
 	if (ret != R_ANAL_RET_ERROR)
-		r_list_append (fcn->bbs, bb);
+		r_list_add_sorted (fcn->bbs, bb, cmp_bb);
 
 	r_anal_op_free (op);
 	return ret;
@@ -368,6 +377,8 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 	state.call_queue = r_list_new ();
 	ret = anal_fun (anal, fcn, addr, buf, len, R_ANAL_BB_TYPE_HEAD, &state);
 
+	int i = 0;
+
 	if (ret != R_ANAL_RET_ERROR) {
 		while (r_list_length (state.branch_queue)) {
 			const ut64 addr = (ut64)r_list_pop (state.branch_queue);
@@ -377,11 +388,12 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 		ret = R_ANAL_RET_END;
 	}
 
+#if 0
 	ut64 call_addr;
 	RListIter *it;
 	RAnalBlock *block;
 	r_list_foreach (state.call_queue, it, call_addr) {
-		block = bbget (fcn, call_addr);
+		block = r_anal_fcn_bbget (fcn, call_addr);
 		if (block) {
 			eprintf("call to %"PFMT64x" is inside a block (delta %"PFMT64x")\n", 
 					call_addr, call_addr - block->addr);
@@ -394,6 +406,7 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 		} else
 			r_anal_fcn_xref_add (anal, fcn, -1, call_addr, R_ANAL_REF_TYPE_CALL);
 	}
+#endif
 
 	r_list_free (state.branch_queue);
 	r_list_free (state.call_queue);
@@ -814,7 +827,7 @@ R_API RAnalFunction *r_anal_get_fcn_at(RAnal *anal, ut64 addr) {
 R_API RList* r_anal_fcn_get_refs (RAnalFunction *anal) { return anal->refs; }
 R_API RList* r_anal_fcn_get_xrefs (RAnalFunction *anal) { return anal->xrefs; }
 R_API RList* r_anal_fcn_get_vars (RAnalFunction *anal) { return anal->vars; }
-R_API RList* r_anal_fcn_get_bbs (RAnalFunction *anal) { return anal->bbs; }
+R_API RList* r_anal_fcn_bbgets (RAnalFunction *anal) { return anal->bbs; }
 
 R_API int r_anal_fcn_is_in_offset (RAnalFunction *fcn, ut64 addr) {
 	return (addr >= fcn->addr &&  addr < (fcn->addr+fcn->size));
