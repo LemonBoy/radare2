@@ -8,8 +8,6 @@
 #define EXISTS(x,y...) snprintf (key, sizeof(key)-1,x,##y),sdb_exists(DB,key)
 #define SETKEY(x,y...) snprintf (key, sizeof (key)-1, x,##y);
 
-#define VERBOSE_DELAY if(0)
-
 R_API const char *r_anal_fcn_type_tostring(int type) {
 	switch (type) {
 		case R_ANAL_FCN_TYPE_NULL: return "null";
@@ -350,6 +348,9 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 
 R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 len, int reftype) {
 	RAnalFunState state;
+	RListIter *it;
+	RAnalBlock *block;
+	ut64 call_addr;
 	ut8 bbuf[4096];
 	int ret;
 
@@ -377,8 +378,6 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 	state.call_queue = r_list_new ();
 	ret = anal_fun (anal, fcn, addr, buf, len, R_ANAL_BB_TYPE_HEAD, &state);
 
-	int i = 0;
-
 	if (ret != R_ANAL_RET_ERROR) {
 		while (r_list_length (state.branch_queue)) {
 			const ut64 addr = (ut64)r_list_pop (state.branch_queue);
@@ -388,10 +387,6 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 		ret = R_ANAL_RET_END;
 	}
 
-#if 0
-	ut64 call_addr;
-	RListIter *it;
-	RAnalBlock *block;
 	r_list_foreach (state.call_queue, it, call_addr) {
 		block = r_anal_fcn_bbget (fcn, call_addr);
 		if (block) {
@@ -406,7 +401,6 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 		} else
 			r_anal_fcn_xref_add (anal, fcn, -1, call_addr, R_ANAL_REF_TYPE_CALL);
 	}
-#endif
 
 	r_list_free (state.branch_queue);
 	r_list_free (state.call_queue);

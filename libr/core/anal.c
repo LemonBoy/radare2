@@ -7,7 +7,6 @@
 
 #define ANALBS 4096
 
-
 R_API RAnalOp* r_core_anal_op(RCore *core, ut64 addr) {
 	RAnalOp op, *_op;
 	ut8 buf[128];
@@ -347,9 +346,11 @@ static int iscodesection(RCore *core, ut64 addr) {
 R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth) {
 	ut8 buf[ANALBS];
 	RAnalFunction *fcn;
+	RAnalBlock *bb;
 	RFlagItem *flag;
 	RAnalRef *ref;
 	RListIter *iter;
+	char flagname[20];
 	int ret, buf_size;
 
 	if (from != UT64_MAX) {
@@ -389,6 +390,8 @@ R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int dept
 
 	flag = r_flag_get_i2 (core->flags, at);
 
+	r_flag_space_set (core->flags, "functions");
+
 	if (flag) {
 		fcn->name = r_str_newf ("%s", flag->name);
 	} else {
@@ -397,8 +400,16 @@ R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int dept
 				fcn->type == R_ANAL_FCN_TYPE_SYM? "sym":
 				fcn->type == R_ANAL_FCN_TYPE_IMP? "imp": "fcn", at);
 		/* Add flag */
-		r_flag_space_set (core->flags, "functions");
 		r_flag_set (core->flags, fcn->name, at, fcn->size, 0);
+	}
+
+	/* Every bb gets its local label */
+	r_list_foreach (fcn->bbs, iter, bb) {
+		/* Don't overwrite the function flag */
+		if (bb->addr != fcn->addr) {
+			snprintf (flagname, sizeof (flagname), "loc_%"PFMT64x, bb->addr);
+			r_flag_set (core->flags, flagname, bb->addr, bb->size, 0);
+		}
 	}
 
 	/* Register the new function */

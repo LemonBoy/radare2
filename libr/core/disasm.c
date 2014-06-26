@@ -654,23 +654,22 @@ static void handle_show_functions (RCore *core, RDisasmState *ds) {
 				"%s (%s) %s %d\n%s ";
 			int corner = (bb->size <= ds->analop.size)? RDWN_CORNER: LINE_VERT;
 			corner = LINE_VERT; // 99% of cases
-#if SLOW_BUT_OK
+		r_flag_space_set (core->flags, "functions");
 			RFlagItem *item = r_flag_get_i (core->flags, bb->addr);
-			corner = item? LINE_VERT: RDWN_CORNER;
-			if (item)
-				corner = 0;
-#endif
+			if (!item)
+				eprintf("fail @ %08x\n", bb->addr);
+			/*corner = item? LINE_VERT: RDWN_CORNER;*/
 			if (ds->show_color) {
 				r_cons_printf (fmt, ds->color_fline,
 					core->cons->vline[RUP_CORNER], ds->color_fname,
 					(f->addr == bb->addr) ? "fcn" : "loc",
-					f->name, bb->size, corner);
+					item->name, bb->size, corner);
 				r_cons_printf ("%s%s "Color_RESET,
 					ds->color_fline, core->cons->vline[corner]);
 			} else {
 				r_cons_printf (fmt, core->cons->vline[RUP_CORNER],
 					(f->addr == bb->addr) ? "fcn" : "loc",
-					f->name, bb->size, core->cons->vline[corner]);
+					item->name, bb->size, core->cons->vline[corner]);
 			}
 #if 0
 		}
