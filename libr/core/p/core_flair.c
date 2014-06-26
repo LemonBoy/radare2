@@ -124,6 +124,8 @@ typedef struct RSigNode {
 	ut8 *maskp;
 } RSigNode;
 
+void r_sig_node_print (RSigNode *node, const int indent);
+
 #define POLY 0x8408
 unsigned short crc16(unsigned char *data_p, size_t length)
 {
@@ -184,13 +186,20 @@ static void r_sig_node_match_buf (const ut64 off, const ut8 *buf, unsigned long 
 	RSigLeaf *l;
 	RSigSubLeaf *s;
 	RSigName *n;
-	ut64 pos = off;
+	ut64 pos;
 
-	for (pos = 0; pos < buf_size; ) {
+	int debug = R_FALSE;
+
+	for (pos = off; pos < buf_size; ) {
 		if (r_print_is_interrupted ())
 			break;
 
 		if (!r_sig_node_match(buf + pos, buf_size - pos, node)) {
+			if (pos >= 0x2554 && pos <= 0x2598) {
+				/*eprintf("bingo? %x\n", pos);*/
+				r_sig_node_print (node, -1);
+				debug = R_TRUE;
+			}
 			pos += node->length;
 
 			r_list_foreach(node->child_list, it1, c)
@@ -206,14 +215,22 @@ static void r_sig_node_match_buf (const ut64 off, const ut8 *buf, unsigned long 
 					}
 
 					r_list_foreach(l->sub_list, it3, s) {
-						if (s->flags&1 && buf[pos + s->check_off] != s->check_val)
+						if (debug)
+							eprintf("check (%x) %x = %x\n", pos, pos + s->check_off, s->check_val);
+						if ((s->flags&1) && buf[pos + s->check_off + 2] != s->check_val) {
+							eprintf("discard (%02x != %02x)\n", buf[pos + s->check_off], s->check_val);
 							continue;
-						r_list_foreach(s->names_list, it4, n) {
-							eprintf("%x - %s\n", n->offset, n->name);
 						}
+						eprintf("pass!\n");
+						r_list_foreach(s->names_list, it4, n) {
+							if (strcmp (n->name, "@__security_check_cookie@4")) {
+							eprintf("%x %x - %s\n", pos, n->offset, n->name);
+							}
+						}
+						eprintf("end?\n");
 					}
 				}
-				return;
+				/*return;*/
 			}
 		} else 
 			pos += 1;
@@ -244,7 +261,7 @@ static void r_sig_node_free (RSigNode *node) {
 	}
 }
 
-static void r_sig_node_print (RSigNode *node, const int indent) {
+void r_sig_node_print (RSigNode *node, const int indent) {
 	int i;
 	ut64 cur;
 	RListIter *it;
@@ -265,6 +282,8 @@ static void r_sig_node_print (RSigNode *node, const int indent) {
 			RListIter *it;
 			RSigName *name;
 			eprintf("Flags : %x\n", sub->flags);
+			if (sub->flags&1)
+				eprintf("check @ %02x = %02x\n", sub->check_off, sub->check_val);
 			r_list_foreach(sub->names_list, it, name) {
 				for (i = 0; i < indent + 1; i++) eprintf("\t");
 				eprintf("> %s @ %x\n", name->name, name->offset);
@@ -308,7 +327,7 @@ static void r_sig_parse_leaf (bb *b, RSigNode *node) {
 					ch = read_byte(b);
 				for (i = 0; ch > 0x1f; i++) {
 					if (i > R_SIG_NAME_MAX) {
-						eprintf("fuckit\n");
+						// TODO:FIXME
 						return;
 					}
 					name->name[i] = (char)ch;
@@ -322,7 +341,7 @@ static void r_sig_parse_leaf (bb *b, RSigNode *node) {
 			if (flags&0x02) {
 				sub->flags |= 1;
 				/*sub->check_off = read_shift(b);*/
-				sub->check_off = read_short(b);
+				sub->check_off = read_short(b)&0xff;
 				sub->check_val = read_byte(b);
 			}
 
@@ -450,8 +469,10 @@ static int r_sig_parse (const RCore *core, const char *filename) {
 	int size, dec_size;
 
 	fp = r_sandbox_fopen(filename, "rb");
-	if (!fp)
+	if (!fp) {
+		eprintf ("Could not open \"%s\"", filename);
 		return R_FALSE;
+	}
 
 	fseek(fp, 0, SEEK_END);
 	size = ftell(fp);
