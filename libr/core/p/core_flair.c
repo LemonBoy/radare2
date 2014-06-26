@@ -51,7 +51,7 @@ static bb *init_bb (ut8 *ptr, ut32 size) {
 	return b;
 }
 
-static ut32 read_byte (bb *b) {
+static ut8 read_byte (bb *b) {
 	return b->buf[b->pos++];
 }
 
@@ -322,10 +322,10 @@ static void r_sig_parse_leaf (bb *b, RSigNode *node) {
 				RSigName *name = R_NEW0(RSigName);
 				off += read_shift(b);
 				name->offset = off;
-				ut32 ch = read_byte(b);
+				ut8 ch = read_byte(b);
 				if (ch < 0x20)
 					ch = read_byte(b);
-				for (i = 0; ch > 0x1f; i++) {
+				for (i = 0; ch >= 0x20; i++) {
 					if (i > R_SIG_NAME_MAX) {
 						// TODO:FIXME
 						return;
@@ -333,15 +333,21 @@ static void r_sig_parse_leaf (bb *b, RSigNode *node) {
 					name->name[i] = (char)ch;
 					ch = read_byte(b);
 				}
+				if (ch == 0x0a) {
+					/*name->name[i++] = (char)ch;*/
+					ch = read_byte(b);
+				}
 				name->name[i] = '\0';
+				eprintf("name %s (%x)\n", name, ch);
 				flags = ch;
 				r_list_append(sub->names_list, name);
 			} while(flags&0x01);
 
 			if (flags&0x02) {
 				sub->flags |= 1;
-				/*sub->check_off = read_shift(b);*/
-				sub->check_off = read_short(b)&0xff;
+				eprintf("bbpos %x\n", b->pos);
+				sub->check_off = read_shift(b);
+				/*sub->check_off = read_short(b)&0xff;*/
 				sub->check_val = read_byte(b);
 			}
 
