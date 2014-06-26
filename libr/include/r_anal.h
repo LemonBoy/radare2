@@ -1239,7 +1239,6 @@ extern RAnalPlugin r_anal_plugin_i8080;
 extern RAnalPlugin r_anal_plugin_8051;
 extern RAnalPlugin r_anal_plugin_arc;
 extern RAnalPlugin r_anal_plugin_ebc;
-extern RAnalPlugin r_anal_plugin_gb;
 extern RAnalPlugin r_anal_plugin_nios2;
 extern RAnalPlugin r_anal_plugin_malbolge;
 extern RAnalPlugin r_anal_plugin_ws;

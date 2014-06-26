@@ -1,8 +1,13 @@
 /* radare - LGPL - Copyright 2010-2014 - nibble, pancake */
 
+#define DEBUG_ANAL 1
+
 #include <r_anal.h>
 #include <r_util.h>
 #include <r_list.h>
+#ifdef DEBUG_ANAL
+#include <assert.h>
+#endif
 
 #define DB a->sdb_fcns
 #define EXISTS(x,y...) snprintf (key, sizeof(key)-1,x,##y),sdb_exists(DB,key)
@@ -172,16 +177,14 @@ static int bbsum(RAnalFunction *fcn) {
 	ut64 base = fcn->addr;
 	ut64 max = base;
 	r_list_foreach (fcn->bbs, iter, bb) {
+#ifdef DEBUG_ANAL
 		eprintf("> From %"PFMT64x" To %"PFMT64x" (%"PFMT64x",%"PFMT64x")\n", bb->addr, bb->addr+bb->size, bb->jump, bb->fail);
-#if 1
+		assert (bb->size > 0);
+#endif
 		if (bb->addr+bb->size > max)
 			max = bb->addr+bb->size;
 	}
 	return (max-base);
-#else
-	}
-	return 0;
-#endif
 } 
 
 /* Split b1 at "at" into b2 */
@@ -194,7 +197,9 @@ static int bb_split (RAnalBlock *b1, const ut64 at, RAnalBlock *b2) {
 	b2->size = b1->size - at;
 	/* Reduce b1 */
 	b1->size = at;
-
+#ifdef DEBUG_ANAL
+	assert (b1->size > 0 && b2->size > 0);
+#endif
 	/* Wire the block ends */
 	b2->jump = b1->jump;
 	b2->fail = b1->fail;
@@ -213,14 +218,18 @@ static int fcn_split (RAnalFunction *from, RAnalFunction *to) {
 		return R_FALSE;
 
 	r_list_foreach (from->bbs, it, bb) {
-		if (to->addr >= bb->addr && to->addr <= bb->addr + bb->size) {
+		if (to->addr > bb->addr && to->addr <= bb->addr + bb->size) {
+#ifdef DEBUG_ANAL
 			eprintf("split block (%x:%x) because %x\n", bb->addr, bb->size, to->addr);
+#endif
 			RAnalBlock *new = R_NEW0 (RAnalBlock);
 			bb_split (bb, to->addr - bb->addr, new);
 			r_list_add_sorted (to->bbs, new, cmp_bb);
 		}
 		else if (bb->addr >= to->addr) {
+#ifdef DEBUG_ANAL
 			eprintf("assign block (%x:%x) because %x\n", bb->addr, bb->size, to->addr);
+#endif
 			r_list_add_sorted (to->bbs, bb, cmp_bb);
 			r_list_split_iter (from->bbs, it);
 			free (it);
@@ -253,10 +262,20 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 	bb->fail = UT64_MAX;
 	bb->type = type;
 
-	op = r_anal_op_new ();
-
 	ret = R_ANAL_RET_ERROR;
 	pos = 0;
+
+	RAnalFunction *ff = r_anal_fcn_find (anal, addr, -1);
+	/* There's already a function at this address */
+	if (ff) {
+		ret = R_ANAL_RET_DUP;
+		/* Split the function if its not exactly the same function */
+		if (ff->addr != addr) {
+			fcn_split (ff, fcn);
+			ret = R_ANAL_RET_END;
+		}
+		return ret;
+	}
 
 	/* Quick test to check if we're analyzing some code that is "owned" by
 	 * another bb. In that case just split the block */
@@ -267,16 +286,19 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 		if (this_bb->addr != addr) {
 			RAnalBlock *new = R_NEW0 (RAnalBlock);
 			bb_split (this_bb, addr - this_bb->addr, new);
+			assert (this_bb->size > 0 && new->size > 0);
 			r_list_add_sorted (fcn->bbs, new, cmp_bb);
 			ret = R_ANAL_RET_END;
 		}
 		return ret;
 	}
 
+	op = r_anal_op_new ();
+
 	while (pos < size) {
 		if (r_anal_fcn_find (anal, addr+pos, -1) || r_anal_fcn_bbget (fcn, addr+pos)) {
 			bb->fail = addr+pos;
-			ret = R_ANAL_RET_END;
+			ret = pos? R_ANAL_RET_END : R_ANAL_RET_ERROR;
 			break;
 		}
 
@@ -293,6 +315,7 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 			case R_ANAL_OP_TYPE_CCALL:
 				if (op->jump != UT64_MAX) {
 					r_list_append (state->call_queue, op->jump);
+					r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL);
 				}
 				bb->fail = op->fail;
 				r_list_append (state->branch_queue, op->fail);
@@ -301,6 +324,7 @@ int anal_fun(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, int size, con
 			case R_ANAL_OP_TYPE_CALL:
 				if (op->jump != UT64_MAX) {
 					r_list_append (state->call_queue, op->jump);
+					r_anal_fcn_xref_add (anal, fcn, op->addr, op->jump, R_ANAL_REF_TYPE_CALL);
 				}
 				break;
 		}
@@ -358,17 +382,6 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 	fcn->size = 0;
 	fcn->type = (reftype == R_ANAL_REF_TYPE_CODE) ? R_ANAL_FCN_TYPE_LOC: R_ANAL_FCN_TYPE_FCN;
 
-	RAnalFunction *ff = r_anal_fcn_find (anal, addr, -1);
-	/* There's already a function at this address */
-	if (ff) {
-		/* Split the function if its not exactly the same function */
-		if (ff->addr != addr) {
-			fcn_split (ff, fcn);
-			return R_ANAL_RET_END;
-		}
-		return R_ANAL_RET_DUP;
-	}
-
 	if (anal->cur && anal->cur->fcn) {
 		ret = anal->cur->fcn(anal, fcn, addr, buf, len, reftype);
 		if (anal->cur->custom_fn_anal) return ret;
@@ -376,17 +389,21 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 
 	state.branch_queue = r_list_new ();
 	state.call_queue = r_list_new ();
-	ret = anal_fun (anal, fcn, addr, buf, len, R_ANAL_BB_TYPE_HEAD, &state);
 
-	if (ret != R_ANAL_RET_ERROR) {
+	anal->iob.read_at (anal->iob.io, addr, bbuf, sizeof (bbuf));
+	ret = anal_fun (anal, fcn, addr, bbuf, sizeof (bbuf), R_ANAL_BB_TYPE_HEAD, &state);
+
+	if (ret != R_ANAL_RET_ERROR || ret != R_ANAL_RET_DUP) {
 		while (r_list_length (state.branch_queue)) {
 			const ut64 addr = (ut64)r_list_pop (state.branch_queue);
 			anal->iob.read_at (anal->iob.io, addr, bbuf, sizeof (bbuf));
 			ret = anal_fun (anal, fcn, addr, bbuf, sizeof (bbuf), R_ANAL_BB_TYPE_BODY, &state);
 		}
+		/* We don't care about what happened when analyzing the branches */
 		ret = R_ANAL_RET_END;
 	}
 
+#if 0
 	r_list_foreach (state.call_queue, it, call_addr) {
 		block = r_anal_fcn_bbget (fcn, call_addr);
 		if (block) {
@@ -401,6 +418,7 @@ R_API int r_anal_fcn(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut8 *buf, ut64 
 		} else
 			r_anal_fcn_xref_add (anal, fcn, -1, call_addr, R_ANAL_REF_TYPE_CALL);
 	}
+#endif
 
 	r_list_free (state.branch_queue);
 	r_list_free (state.call_queue);

@@ -561,15 +561,17 @@ static void handle_show_xrefs (RCore *core, RDisasmState *ds) {
 				    break;
 				  }
 
+				RFlagItem *item = r_flag_get_i (core->flags, ds->at);
+
 				if (ds->show_color) {
 					r_cons_printf ("%s; %s XREF from 0x%08"PFMT64x" (%s)"Color_RESET"\n",
-						       ds->pal_comment,
-						       _xref_type, refi->addr,
-						       fun?fun->name:"unk");
+								ds->pal_comment,
+								_xref_type, refi->addr,
+								item? item->name: fun? fun->name : "unk");
 				} else {
 				  r_cons_printf ("; %s XREF from 0x%08"PFMT64x" (%s)\n",
-						 _xref_type, refi->addr,
-						 fun?fun->name: "unk");
+						_xref_type, refi->addr,
+						item? item->name: fun? fun->name : "unk");
 				}
 			}
 			}
@@ -628,8 +630,11 @@ static void handle_show_functions (RCore *core, RDisasmState *ds) {
 	if (!f)
 		return;
 	bb = r_anal_fcn_bbget (f, ds->at);
-	if (!bb)
+	if (!bb) {
+		/* Keep non-code aligned */
+		r_cons_printf (ds->pre);
 		return;
+	}
 
 	/* Beginning of the function */
 	if (bb->addr == ds->at) {

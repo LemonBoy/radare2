@@ -5,8 +5,6 @@
 #include <r_flags.h>
 #include <r_core.h>
 
-#define ANALBS 4096
-
 R_API RAnalOp* r_core_anal_op(RCore *core, ut64 addr) {
 	RAnalOp op, *_op;
 	ut8 buf[128];
@@ -344,7 +342,6 @@ static int iscodesection(RCore *core, ut64 addr) {
 }
 
 R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth) {
-	ut8 buf[ANALBS];
 	RAnalFunction *fcn;
 	RAnalBlock *bb;
 	RFlagItem *flag;
@@ -365,16 +362,7 @@ R_API int r_core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int dept
 	if (!fcn)
 		return R_FALSE;
 
-	ret = r_core_read_at (core, at, buf, sizeof(buf));
-	if (ret < 0) {
-		eprintf("I/O error\n");
-		r_anal_fcn_free (fcn);
-		return R_FALSE;
-	}
-
-	buf_size = sizeof (buf);
-
-	ret = r_anal_fcn (core->anal, fcn, at, buf, buf_size, reftype);
+	ret = r_anal_fcn (core->anal, fcn, at, NULL, 0, reftype);
 
 	switch (ret) {
 		case R_ANAL_RET_ERROR:
