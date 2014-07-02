@@ -35,7 +35,7 @@ static int load(RBinFile *arch) {
 	const ut8 *bytes = arch ? r_buf_buffer (arch->buf) : NULL;
 	if (!arch || !arch->o)
 		return R_FALSE;
-	arch->o->bin_obj = malloc (sizeof (r_bin_plugin_xbe));
+	arch->o->bin_obj = malloc (sizeof (r_bin_xbe_obj_t));
 	if (!arch->o->bin_obj)
 		return R_FALSE;
 	obj = arch->o->bin_obj;
