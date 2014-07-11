@@ -124,9 +124,13 @@ static int z80_op(RAnal *anal, RAnalOp *op, ut64 addr, const ut8 *data, int len)
 		case 0x30:
 		case 0x38:
 		case 0xc2:
+			op->type = R_ANAL_OP_TYPE_JMP; // jmpz
+			op->jump = addr + ilen + (signed char)data[1];
+			op->fail = addr + ilen;
+			break;
+		case 0xd2:
 		case 0xc3:
 		case 0xca:
-		case 0xd2:
 		case 0xda:
 		case 0xe2:
 		case 0xe9:
@@ -134,8 +138,12 @@ static int z80_op(RAnal *anal, RAnalOp *op, ut64 addr, const ut8 *data, int len)
 		case 0xf2:
 		case 0xfa:
 			op->type = R_ANAL_OP_TYPE_JMP; // jmpz
+			if (data[0] != 0xE9)
+				op->jump = data[2] << 8 | data[1];
+			else
+				op->jump = UT64_MAX;
+			op->fail = addr + ilen;
 			break;
-			
 		case 0xc7:				//rst 0
 			op->jump = 0x00;
 			op->fail = addr + ilen;
