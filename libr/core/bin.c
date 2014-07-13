@@ -1145,6 +1145,8 @@ R_API int r_core_bin_info (RCore *core, int action, int mode, int va, RCoreBinFi
 	if (core->bin && core->bin->cur && core->bin->cur->o)
 		baseaddr = core->bin->cur->o->baddr;
 
+	baseaddr = 0;
+
 	if (filter && filter->offset)
 		at = filter->offset;
 	if (filter && filter->name)
