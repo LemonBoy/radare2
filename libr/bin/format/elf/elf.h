@@ -12,12 +12,12 @@
 #define R_BIN_ELF_SCN_IS_READABLE(x)   x & SHF_ALLOC
 #define R_BIN_ELF_SCN_IS_WRITABLE(x)   x & SHF_WRITE
 
-#define R_BIN_ELF_SYMBOLS 0x0
-#define R_BIN_ELF_IMPORTS 0x1
+#define R_BIN_ELF_SYMBOLS 0x1
+#define R_BIN_ELF_IMPORTS 0x2
 
 typedef struct r_bin_elf_section_t {
 	ut64 offset;
-	ut64 rva;
+	ut64 address;
 	ut64 size;
 	ut64 align;
 	ut32 flags;
@@ -27,12 +27,14 @@ typedef struct r_bin_elf_section_t {
 
 typedef struct r_bin_elf_symbol_t {
 	ut64 offset;
+	ut64 address;
 	ut64 size;
 	ut32 ordinal;
 	char bind[ELF_STRING_LENGTH];
 	char type[ELF_STRING_LENGTH];
 	char name[ELF_STRING_LENGTH];
 	int last;
+	int is_import;
 } RBinElfSymbol;
 
 typedef struct r_bin_elf_reloc_t {
@@ -41,7 +43,7 @@ typedef struct r_bin_elf_reloc_t {
 	int is_rela;
 	st64 addend;
 	ut64 offset;
-	ut64 rva;
+	ut64 address;
 	ut16 section;
 	int last;
 } RBinElfReloc;
@@ -65,21 +67,42 @@ typedef struct r_bin_elf_lib_t {
 	int last;
 } RBinElfLib;
 
+enum {
+	E_ELF_UNKNOWN = -1,
+	R_ELF_SYMTAB,
+	R_ELF_DYNSYM,
+	R_ELF_DYNAMIC,
+};
+
 struct Elf_(r_bin_elf_obj_t) {
 	Elf_(Ehdr) ehdr;
 	Elf_(Phdr)* phdr;
 	Elf_(Shdr)* shdr;
 
 	Elf_(Shdr) *strtab_section;
-	ut64 strtab_size;
 	char* strtab;
 
 	Elf_(Shdr) *shstrtab_section;
-	ut64 shstrtab_size;
 	char* shstrtab;
+
+	// KK
+	char *shstr_buf;
+	int shstr_size;
 
 	Elf_(Dyn) *dyn_buf;
 	int dyn_entries;
+
+	ut64 baddr;
+	ut64 boffset;
+	int endian;
+
+	ut64 sym_offset;
+	int sym_entries;
+	ut64 strtab_offset;
+	int strtab_size;
+	// KK
+	RBinElfSymbol *_sym_table;
+	RBinElfReloc *_rel_table;
 
 	RBinImport **imports_by_ord;
 	size_t imports_by_ord_size;
@@ -88,10 +111,8 @@ struct Elf_(r_bin_elf_obj_t) {
 
 	int bss;
 	int size;
-	ut64 baddr;
-	ut64 boffset;
-	int endian;
 	const char* file;
+	// KK
 	RBuffer *b;
 	Sdb *kv;
 };
@@ -107,7 +128,7 @@ ut64 Elf_(r_bin_elf_get_fini_offset)(struct Elf_(r_bin_elf_obj_t) *bin);
 int Elf_(r_bin_elf_get_stripped)(struct Elf_(r_bin_elf_obj_t) *bin);
 int Elf_(r_bin_elf_get_static)(struct Elf_(r_bin_elf_obj_t) *bin);
 char* Elf_(r_bin_elf_get_data_encoding)(struct Elf_(r_bin_elf_obj_t) *bin);
-char* Elf_(r_bin_elf_get_arch)(struct Elf_(r_bin_elf_obj_t) *bin);
+const char* Elf_(r_bin_elf_get_arch)(struct Elf_(r_bin_elf_obj_t) *bin);
 char* Elf_(r_bin_elf_get_machine_name)(struct Elf_(r_bin_elf_obj_t) *bin);
 char* Elf_(r_bin_elf_get_file_type)(struct Elf_(r_bin_elf_obj_t) *bin);
 char* Elf_(r_bin_elf_get_elf_class)(struct Elf_(r_bin_elf_obj_t) *bin);
