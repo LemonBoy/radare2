@@ -8,14 +8,15 @@
 static ut64 r_bin_elf_get_offset (struct Elf_(r_bin_elf_obj_t) *bin, ut64 va) {
 	int i;
 
-	for (i = 0; i < bin->ehdr.e_shnum; i++) {
-		if (va >= bin->shdr[i].sh_addr && va < bin->shdr[i].sh_addr + bin->shdr[i].sh_size)
-			return (va - bin->shdr[i].sh_addr) + bin->shdr[i].sh_offset;
-	}
-
 	for (i = 0; i < bin->ehdr.e_phnum; i++) {
 		if (va >= bin->phdr[i].p_vaddr && va < bin->phdr[i].p_vaddr + bin->phdr[i].p_memsz)
 			return (va - bin->phdr[i].p_vaddr) + bin->phdr[i].p_offset;
+	}
+
+	// We shouldn't really trust the section headers, just hope we never reach this point
+	for (i = 0; i < bin->ehdr.e_shnum; i++) {
+		if (va >= bin->shdr[i].sh_addr && va < bin->shdr[i].sh_addr + bin->shdr[i].sh_size)
+			return (va - bin->shdr[i].sh_addr) + bin->shdr[i].sh_offset;
 	}
 
 	return va;
@@ -308,6 +309,8 @@ typedef struct {
 
 #define MIPS_SYMTABNO 0x70000011
 
+#define MAX_HASH_CHAIN 400
+
 static int Elf_(r_bin_elf_get_symbols_count) (struct Elf_(r_bin_elf_obj_t) *bin) {
 	Elf_(Dyn) *hash;
 
@@ -329,18 +332,73 @@ static int Elf_(r_bin_elf_get_symbols_count) (struct Elf_(r_bin_elf_obj_t) *bin)
 		return dt_hash.nchain;
 	}
 
-	// TODO : DT_GNU_HASH support
 	hash = Elf_(r_bin_elf_dyn_find) (bin, DT_GNU_HASH);
 	if (hash) {
-#if 0
+#if 1
+		int i, last_sym;
 		Elf_GNU_Hash dt_gnu_hash;
-		int chain_length;
+		Elf32_Word *bucket;
+		Elf32_Word *chains;
 
-		if (r_buf_fread_at (bin->b, hash->d_un.d_ptr - bin->baddr, (ut8 *)&dt_gnu_hash,
-				bin->endian?"4I":"4i", 1) != sizeof (Elf_GNU_Hash)) {
+		if (r_buf_fread_at (bin->b, r_bin_elf_get_offset (bin, hash->d_un.d_ptr), 
+				(ut8 *)&dt_gnu_hash, bin->endian?"4I":"4i", 1) != sizeof (Elf_GNU_Hash)) {
 			eprintf ("Could not read DT_GNU_HASH\n");
 			return -1;
 		}
+
+		bucket = calloc (dt_gnu_hash.nbuckets, sizeof (Elf32_Word));
+		if (!bucket)
+			return -1;
+
+		const ut64 bucket_off = r_bin_elf_get_offset (bin, hash->d_un.d_ptr) + sizeof (Elf_GNU_Hash) + 
+			dt_gnu_hash.bitmask_nwords * sizeof(Elf_(Addr));
+		const ut64 chain_off = bucket_off + dt_gnu_hash.nbuckets * 4;
+
+		if (r_buf_fread_at (bin->b, bucket_off, (ut8 *)bucket, bin->endian?"I":"i", 
+				dt_gnu_hash.nbuckets) != sizeof (Elf32_Word) * dt_gnu_hash.nbuckets) {
+			free (bucket);
+			eprintf ("Could not read the hash buckets\n");
+			return -1;
+		}
+
+		last_sym = 0;
+		for (i = 0; i < dt_gnu_hash.nbuckets; i++) {
+			if (bucket[i] > last_sym)
+				last_sym = bucket[i];
+		}
+
+		free (bucket);
+
+		// The section is probably malformed, ignore it 
+		if (last_sym < dt_gnu_hash.symbol_base)
+			return -1;
+
+		chains = calloc (MAX_HASH_CHAIN, sizeof (Elf32_Word));
+		if (!chains)
+			return -1;
+
+		if (r_buf_fread_at (bin->b, chain_off, (ut8 *)chains, bin->endian?"I":"i", MAX_HASH_CHAIN) < 
+				sizeof (Elf32_Word) * MAX_HASH_CHAIN) {
+			eprintf ("Could not read the hash chain\n");
+			return -1;
+		}
+
+		// Walk the latest chain
+		for (i = 0; i < MAX_HASH_CHAIN; i++) {
+			if (chains[last_sym - dt_gnu_hash.symbol_base]&1)
+				break;
+
+			last_sym++;
+		}
+		last_sym++;
+
+#ifdef ELF_DEBUG
+		eprintf ("We've come a long way, found %i symbols!\n", last_sym);
+#endif
+
+		free (chains);
+
+		return last_sym;
 #else
 		eprintf("Unsupported DT_GNU_HASH section found!\n");
 #endif
@@ -350,9 +408,9 @@ static int Elf_(r_bin_elf_get_symbols_count) (struct Elf_(r_bin_elf_obj_t) *bin)
 }
 
 // Try, in the following order, to get a symbol table:
-// - using the .symtab/.strtab section
 // - using the SYMTAB/STRTAB entry in PT_DYNAMIC
 // - using the .dynsym/.dynstr section
+// - using the .symtab/.strtab section
 static int Elf_(r_bin_elf_choose_symbol_table) (struct Elf_(r_bin_elf_obj_t) *bin) {
 	Elf_(Dyn) *d_symtab, *d_strtab, *d_strsz;
 	Elf_(Shdr) *s_sym, *s_str;
@@ -360,22 +418,6 @@ static int Elf_(r_bin_elf_choose_symbol_table) (struct Elf_(r_bin_elf_obj_t) *bi
 
 	if (!bin)
 		return R_FALSE;
-	s_sym = Elf_(r_bin_elf_get_section_by_name) (bin, ".symtab");
-	s_str = Elf_(r_bin_elf_get_section_by_name) (bin, ".strtab");
-
-	if (0 && s_sym && s_str) {
-		bin->sym_offset = s_sym->sh_offset;
-		bin->sym_entries = s_sym->sh_size / sizeof (Elf_(Sym));
-
-		bin->strtab_offset = s_str->sh_offset;
-		bin->strtab_size = s_str->sh_size;
-
-#ifdef ELF_DEBUG
-		eprintf ("Using .symtab (%i symbols)\n", bin->sym_entries);
-#endif
-
-		return R_TRUE;
-	}
 
 	d_symtab = Elf_(r_bin_elf_dyn_find) (bin, DT_SYMTAB);
 	d_strtab = Elf_(r_bin_elf_dyn_find) (bin, DT_STRTAB);
@@ -413,6 +455,25 @@ static int Elf_(r_bin_elf_choose_symbol_table) (struct Elf_(r_bin_elf_obj_t) *bi
 
 		return R_TRUE;
 	}
+
+	s_sym = Elf_(r_bin_elf_get_section_by_name) (bin, ".symtab");
+	s_str = Elf_(r_bin_elf_get_section_by_name) (bin, ".strtab");
+
+	if (s_sym && s_str) {
+		bin->sym_offset = s_sym->sh_offset;
+		bin->sym_entries = s_sym->sh_size / sizeof (Elf_(Sym));
+
+		bin->strtab_offset = s_str->sh_offset;
+		bin->strtab_size = s_str->sh_size;
+
+#ifdef ELF_DEBUG
+		eprintf ("Using .symtab (%i symbols)\n", bin->sym_entries);
+#endif
+
+		return R_TRUE;
+	}
+
+
 
 	return R_FALSE;
 }
@@ -468,7 +529,7 @@ static int Elf_(r_bin_elf_read_relocs)
 	if (!(buf = malloc (size)))
 		return 0;
 
-	if (r_buf_fread_at (bin->b, offset, buf, 
+	if (r_buf_fread_at (bin->b, offset, (ut8 *)buf, 
 #if R_BIN_ELF64
 		bin->endian? (is_rela? "3L": "2L"): (is_rela? "3l": "2l"),
 #else
@@ -514,7 +575,7 @@ static int Elf_(r_bin_elf_read_relocs)
 		// Try to assign the respective plt address to every imported symbol
 		ref_sym = r_bin_elf_sym_lookup (bin, sym);
 		if (sym && ref_sym && ref_sym->is_import) {
-			eprintf ("Assoc %s (%x)\n", ref_sym->name, sym);
+			// eprintf ("Assoc %s (%i)\n", ref_sym->name, sym);
 			ut64 plt_off = r_bin_elf_get_offset (bin, ret[i].address);
 #if R_BIN_ELF64
 			ut64 a = 0;
@@ -591,7 +652,6 @@ int Elf_(r_bin_elf_get_relocs_num)(struct Elf_(r_bin_elf_obj_t) *bin) {
 
 RBinElfReloc *Elf_(r_bin_elf_get_relocs)(struct Elf_(r_bin_elf_obj_t) *bin) {
 	Elf_(Dyn) *d_tags[3];
-	Elf_(Shdr) *sect;
 	RBinElfReloc *rel;
 	ut64 offset, size;
 	int i, n, p, type;
@@ -739,14 +799,12 @@ struct r_bin_elf_symbol_t* Elf_(r_bin_elf_get_symbols)(struct Elf_(r_bin_elf_obj
 				snprintf (ret[filt_syms].name, sizeof (ret[filt_syms].name), "invalid_%i", i);
 		}
 
-		ret[filt_syms].ordinal = filt_syms;
+		ret[filt_syms].ordinal = i;
 		ret[filt_syms].is_import = (sym[i].st_shndx == SHN_UNDEF);
 		ret[filt_syms].size = sym[i].st_size;
 		ret[filt_syms].offset = 0;
 		ret[filt_syms].address = 0;
 		ret[filt_syms].last = R_FALSE;
-
-		// TODO : Grab the import ones from the PLT
 
 #if 1
 		if (sym[i].st_shndx != SHN_UNDEF) {
@@ -759,7 +817,6 @@ struct r_bin_elf_symbol_t* Elf_(r_bin_elf_get_symbols)(struct Elf_(r_bin_elf_obj
 
 					case SHN_COMMON:
 					case SHN_UNDEF:
-						eprintf ("");
 						R_FREE (sym);
 						R_FREE (strtab);
 						R_FREE (ret);
