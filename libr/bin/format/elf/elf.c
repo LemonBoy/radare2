@@ -734,6 +734,10 @@ int Elf_(r_bin_elf_detect_osabi)(struct Elf_(r_bin_elf_obj_t) *bin) {
 	if (!bin)
 		return R_FALSE;
 
+	// FreeBSD 3.x binaries use the reserved field to store a string
+	if (!memcmp (&bin->ehdr.e_ident[8], "FreeBSD", 7))
+		return R_ELF_ABI_FREEBSD;
+
 	// Let's try the shortest path first
 	switch (bin->ehdr.e_ident[EI_OSABI]) {
 		case ELFOSABI_NETBSD:
