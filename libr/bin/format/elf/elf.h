@@ -67,11 +67,22 @@ typedef struct r_bin_elf_lib_t {
 	int last;
 } RBinElfLib;
 
+// enum {
+// 	E_ELF_UNKNOWN = -1,
+// 	R_ELF_SYMTAB,
+// 	R_ELF_DYNSYM,
+// 	R_ELF_DYNAMIC,
+// };
+
 enum {
-	E_ELF_UNKNOWN = -1,
-	R_ELF_SYMTAB,
-	R_ELF_DYNSYM,
-	R_ELF_DYNAMIC,
+	R_ELF_ABI_SYSV = 0,
+	R_ELF_ABI_NETBSD,
+	R_ELF_ABI_FREEBSD,
+	R_ELF_ABI_OPENBSD,
+	R_ELF_ABI_SOLARIS,
+	R_ELF_ABI_HURD,
+	R_ELF_ABI_LINUX,
+	R_ELF_ABI_OPENVMS,
 };
 
 struct Elf_(r_bin_elf_obj_t) {
@@ -99,7 +110,9 @@ struct Elf_(r_bin_elf_obj_t) {
 	ut64 sym_offset;
 	int sym_entries;
 	ut64 strtab_offset;
-	int strtab_size;
+	ut64 strtab_size;
+
+	int osabi;
 	// KK
 	RBinElfSymbol *_sym_table;
 	RBinElfReloc *_rel_table;

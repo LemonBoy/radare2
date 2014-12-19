@@ -366,12 +366,12 @@ static RBinInfo* info(RBinFile *arch) {
 	// }
 	// strncpy (ret->bclass, str, R_BIN_SIZEOF_STRINGS);
 	// free (str);
-	// if (!(str = Elf_(r_bin_elf_get_osabi_name) (arch->o->bin_obj))) {
-	// 	free (ret);
-	// 	return NULL;
-	// }
-	// strncpy (ret->os, str, R_BIN_SIZEOF_STRINGS);
-	// free (str);
+	if (!(str = Elf_(r_bin_elf_get_osabi_name) (arch->o->bin_obj))) {
+		free (ret);
+		return NULL;
+	}
+	strncpy (ret->os, str, R_BIN_SIZEOF_STRINGS);
+	free (str);
 	// if (!(str = Elf_(r_bin_elf_get_osabi_name) (arch->o->bin_obj))) {
 	// 	free (ret);
 	// 	return NULL;
